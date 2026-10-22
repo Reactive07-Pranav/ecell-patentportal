@@ -17,6 +17,8 @@ import {
   ShieldAlert,
   Bell,
   ChevronRight,
+  Eye,
+  FileEdit,
 } from "lucide-react";
 
 export const StudentDashboard: React.FC = () => {
@@ -80,7 +82,7 @@ export const StudentDashboard: React.FC = () => {
     return (
       <div className="portal-container" style={{ padding: "80px 0", textAlign: "center" }}>
         <div className="spinner" style={{ margin: "0 auto 16px" }} />
-        <p style={{ color: "var(--text-muted)" }}>Loading your patent disclosures...</p>
+        <p style={{ color: "var(--text-muted)" }}>Loading your patent disclosures and examination telemetry...</p>
       </div>
     );
   }
@@ -167,9 +169,9 @@ export const StudentDashboard: React.FC = () => {
                 <div style={{ fontWeight: 700, color: "#991b1b", fontSize: "0.95rem" }}>
                   Action Required: Revisions Requested on {actionRequiredApps.length} Disclosure{actionRequiredApps.length > 1 ? "s" : ""}
                 </div>
-                <div style={{ fontSize: "0.825rem", color: "#b91c1c", marginTop: "2px" }}>
-                  Coordinator <strong>{COORDINATOR.FULL_NAME}</strong> has provided feedback. Please review and resubmit.
-                </div>
+<div style={{ fontSize: "0.825rem", color: "#b91c1c", marginTop: "2px" }}>
+                    Patent Coordinator <strong>{COORDINATOR.FULL_NAME}</strong> has reviewed your filing and provided itemized feedback. Please review and resubmit to continue examination.
+                  </div>
               </div>
             </div>
             <Link
@@ -193,8 +195,8 @@ export const StudentDashboard: React.FC = () => {
         >
           {[
             { label: "Total Disclosures", value: totalCount, icon: <FileText size={18} color="#2563eb" />, sub: "Recorded in university registry" },
-            { label: "Under Examination", value: inReviewCount, icon: <Hourglass size={18} color="#0d9488" />, sub: "Active coordinator review", valueColor: "#0f766e" },
-            { label: "Action Required", value: actionRequiredApps.length, icon: <AlertTriangle size={18} color={actionRequiredApps.length > 0 ? "#e11d48" : "#94a3b8"} />, sub: "Awaiting resolution", valueColor: actionRequiredApps.length > 0 ? "#be123c" : undefined, cardBg: actionRequiredApps.length > 0 ? "#fff1f2" : undefined },
+            { label: "Under Examination", value: inReviewCount, icon: <Hourglass size={18} color="#0d9488" />, sub: "Under active coordinator review", valueColor: "#0f766e" },
+            { label: "Action Required", value: actionRequiredApps.length, icon: <AlertTriangle size={18} color={actionRequiredApps.length > 0 ? "#e11d48" : "#94a3b8"} />, sub: "Awaiting student resolution", valueColor: actionRequiredApps.length > 0 ? "#be123c" : undefined, cardBg: actionRequiredApps.length > 0 ? "#fff1f2" : undefined },
             { label: "Approved for Filing", value: approvedCount, icon: <CheckCircle2 size={18} color="#16a34a" />, sub: "Forwarded for drafting", valueColor: "#15803d" },
           ].map((kpi) => (
             <div
@@ -225,6 +227,9 @@ export const StudentDashboard: React.FC = () => {
               <ChevronRight size={16} aria-hidden="true" />
               My Patents
             </h2>
+            <span style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
+              Showing {filteredApps.length} of {applications.length} applications
+            </span>
             <Link
               to="/applications/new"
               className="btn btn-sm btn-portal-primary"
@@ -287,11 +292,11 @@ export const StudentDashboard: React.FC = () => {
                 <p style={{ fontWeight: 600, color: "var(--text-primary)", margin: "0 0 6px" }}>
                   {searchQuery || filterTab !== "all" ? "No Matching Disclosures Found" : "No Patent Applications Drafted Yet"}
                 </p>
-                <p style={{ fontSize: "0.875rem", margin: "0 0 20px" }}>
-                  {searchQuery || filterTab !== "all"
-                    ? "Try adjusting your search or filter."
-                    : "Start your intellectual property journey by filing an invention disclosure."}
-                </p>
+<p style={{ fontSize: "0.875rem", margin: "0 0 20px" }}>
+                    {searchQuery || filterTab !== "all"
+                      ? "Try adjusting your search keywords or filter tab to find your application."
+                      : "Start your intellectual property journey by filing an invention disclosure through the E-Cell MUJ patent wizard."}
+                  </p>
                 {!searchQuery && filterTab === "all" && (
                   <Link to="/applications/new" className="btn btn-portal-primary btn-sm">
                     <PlusCircle size={14} /> Draft First Disclosure
@@ -302,18 +307,12 @@ export const StudentDashboard: React.FC = () => {
               <div className="portal-card-grid">
                 {filteredApps.map((app, idx) => {
                   const isCorrection = app.status === "corrections_required";
+                  const isDraft = app.status === "draft";
                   return (
-                    <Link
+                    <div
                       key={app.id}
-                      to={
-                        app.status === "draft"
-                          ? "/applications/" + app.id + "/edit"
-                          : isCorrection
-                          ? "/applications/" + app.id + "/corrections"
-                          : "/applications/" + app.id
-                      }
                       className="portal-patent-card"
-                      aria-label={"Open " + (app.title || "Untitled Invention")}
+                      style={{ display: "flex", flexDirection: "column", height: "100%" }}
                     >
                       {/* Cover */}
                       <div
@@ -347,24 +346,80 @@ export const StudentDashboard: React.FC = () => {
                       </div>
 
                       {/* Body */}
-                      <div className="portal-patent-card-body">
+                      <div className="portal-patent-card-body" style={{ display: "flex", flexDirection: "column", flex: 1 }}>
                         <div className="portal-patent-card-title">
                           {app.title || "Untitled Invention Draft"}
                         </div>
                         <div className="portal-patent-card-meta">
                           {app.reference_number || "No reference"} &bull; V{app.current_version}
                         </div>
+                        {app.technical_field && (
+                          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                            {app.technical_field}
+                          </div>
+                        )}
                         <div style={{ marginTop: "6px" }}>
                           <span className={getStatusBadgeClass(app.status)} style={{ fontSize: "0.68rem" }}>
                             {getStatusDisplayName(app.status)}
                           </span>
                         </div>
+                        {isCorrection && (
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              color: "#dc2626",
+                              fontSize: "0.75rem",
+                              marginTop: "4px",
+                              fontWeight: 600,
+                            }}
+                          >
+                            <AlertTriangle size={12} />
+                            Specific corrections requested by {COORDINATOR.FULL_NAME}
+                          </div>
+                        )}
                         <div className="portal-patent-card-meta" style={{ display: "flex", alignItems: "center", gap: "4px", marginTop: "4px" }}>
                           <Clock size={11} />
                           {new Date(app.updated_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
                         </div>
+
+                        {/* Action button */}
+                        <div style={{ marginTop: "auto", paddingTop: "12px", display: "flex", justifyContent: "flex-end" }}>
+                          {isDraft ? (
+                            <Link
+                              to={"/applications/" + app.id + "/edit"}
+                              className="btn btn-primary btn-sm"
+                              style={{ display: "flex", alignItems: "center", gap: "4px", fontWeight: 600 }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <FileEdit size={13} />
+                              Continue Draft
+                            </Link>
+                          ) : isCorrection ? (
+                            <Link
+                              to={"/applications/" + app.id + "/corrections"}
+                              className="btn btn-danger btn-sm"
+                              style={{ display: "flex", alignItems: "center", gap: "4px", fontWeight: 600 }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <AlertTriangle size={13} />
+                              Address Remarks
+                            </Link>
+                          ) : (
+                            <Link
+                              to={"/applications/" + app.id}
+                              className="btn btn-outline btn-sm"
+                              style={{ display: "flex", alignItems: "center", gap: "4px" }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Eye size={13} />
+                              View Details
+                            </Link>
+                          )}
+                        </div>
                       </div>
-                    </Link>
+                    </div>
                   );
                 })}
               </div>

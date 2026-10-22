@@ -16,7 +16,10 @@ import { AdminApplicationReviewPage } from "./pages/AdminApplicationReviewPage";
 import { SuperAdminDashboard } from "./pages/SuperAdminDashboard";
 
 /**
- * Root index route â€” resolves to role-specific dashboard or /login.
+ * Root index route — resolves to role-specific dashboard or /login.
+ * Direct entry route `/` immediately routes to the user's role-specific dashboard
+ * if already authenticated, or cleanly redirects to `/login`.
+ * (No marketing landing page, per institutional mandate).
  */
 const IndexRoute: React.FC = () => {
   const { currentUser, isLoading } = useAuth();
@@ -46,11 +49,16 @@ export const App: React.FC = () => {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* -- Student / portal routes â€” PortalLayout (new Brightspace-style chrome) -- */}
+          {/* -- Student / portal routes — PortalLayout (Brightspace-style chrome) -- */}
           <Route element={<PortalLayout />}>
+            {/* Primary Entry Point */}
             <Route path="/" element={<IndexRoute />} />
+
+            {/* Authentication Routes */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/auth/login" element={<Navigate to="/login" replace />} />
+
+            {/* Deprecated Workspace Route: Smooth Redirect to Student Dashboard */}
             <Route path="/workspace" element={<Navigate to="/dashboard" replace />} />
 
             <Route
@@ -95,8 +103,9 @@ export const App: React.FC = () => {
             />
           </Route>
 
-          {/* -- Admin routes â€” RootLayout UNCHANGED; renders exactly as before -- */}
+          {/* -- Admin routes — RootLayout UNCHANGED; renders exactly as before -- */}
           <Route element={<RootLayout />}>
+            {/* Authenticated Coordinator (Admin) Routes */}
             <Route
               path="/admin/dashboard"
               element={
@@ -129,6 +138,7 @@ export const App: React.FC = () => {
                 </ProtectedRoute>
               }
             />
+            {/* Catch-all redirect to index */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

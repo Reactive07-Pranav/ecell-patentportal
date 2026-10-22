@@ -102,8 +102,8 @@ export const RootLayout: React.FC = () => {
     currentUser?.role === 'super_admin'
       ? 'Super Administrator'
       : currentUser?.role === 'admin'
-      ? 'Administrator'
-      : 'Student Applicant';
+        ? 'Administrator'
+        : 'Student Applicant';
 
   return (
     <div className="portal portal-admin">
