@@ -1,7 +1,9 @@
-export const ALLOWED_EMAIL_DOMAIN = '@muj.manipal.edu';
+import { validateMujEmail } from '../../lib/supabase';
+import { INSTITUTION } from '../../config/constants';
+
+export const ALLOWED_EMAIL_DOMAIN = INSTITUTION.EMAIL_AT_DOMAIN;
 
 export function isAllowedUniversityEmail(email: string): boolean {
   if (!email) return false;
-  const normalized = email.trim().toLowerCase();
-  return normalized.endsWith(ALLOWED_EMAIL_DOMAIN);
+  return validateMujEmail(email);
 }

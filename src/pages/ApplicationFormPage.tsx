@@ -42,6 +42,109 @@ export const ApplicationFormPage: React.FC = () => {
   const [applicantRegNumber, setApplicantRegNumber] = useState<string>(currentUser?.registration_number || '');
   const [applicantPhone, setApplicantPhone] = useState<string>(currentUser?.phone || '');
 
+  // Auto-sync applicant fields when profile loads
+  useEffect(() => {
+    if (currentUser) {
+      setApplicantName((p) => p || currentUser.full_name || '');
+      setApplicantEmail((p) => p || currentUser.university_email || '');
+      setApplicantDepartment((p) => p || currentUser.department || '');
+      setApplicantRegNumber((p) => p || currentUser.registration_number || '');
+      setApplicantPhone((p) => p || currentUser.phone || '');
+    }
+  }, [currentUser]);
+
+  const FORM_STAGES = [
+    { id: 1, name: 'Applicant' },
+    { id: 2, name: 'Inventors' },
+    { id: 3, name: 'Title & Field' },
+    { id: 4, name: 'Problem' },
+    { id: 5, name: 'Technical & Novelty' },
+    { id: 6, name: 'Practical Use' },
+    { id: 7, name: 'Documents' },
+    { id: 8, name: 'Review & Submit' },
+  ];
+
+  const validateStep = (stepNumber: number): boolean => {
+    const errors: Record<string, string> = {};
+
+    if (stepNumber === 1) {
+      if (!applicantName || applicantName.trim().length < 2) {
+        errors.applicant_name = 'Full legal name is required (minimum 2 characters).';
+      }
+      if (!applicantEmail || !applicantEmail.includes('@')) {
+        errors.applicant_email = 'Valid university email is required.';
+      }
+      if (!applicantDepartment || applicantDepartment.trim().length < 2) {
+        errors.applicant_department = 'Department / School is required.';
+      }
+      if (!applicantRegNumber || applicantRegNumber.trim().length < 2) {
+        errors.applicant_registration_number = 'Registration / Roll / Employee number is required.';
+      }
+      if (!applicantPhone || applicantPhone.trim().length < 10) {
+        errors.applicant_phone = 'Contact phone number must have at least 10 digits.';
+      }
+    } else if (stepNumber === 2) {
+      if (inventors.length === 0) {
+        errors.inventors = 'At least one inventor must be registered.';
+      } else {
+        inventors.forEach((inv, idx) => {
+          if (!inv.full_name || inv.full_name.trim().length < 2) {
+            errors[`inventor_${idx}_name`] = `Inventor #${idx + 1} name is required.`;
+          }
+          if (!inv.email || !inv.email.includes('@')) {
+            errors[`inventor_${idx}_email`] = `Inventor #${idx + 1} valid email is required.`;
+          }
+        });
+      }
+    } else if (stepNumber === 3) {
+      if (!title || title.trim().length < 5) {
+        errors.title = 'Invention title must be at least 5 characters.';
+      }
+      if (!technicalField || technicalField.trim().length < 3) {
+        errors.technical_field = 'Technical domain / field is required (minimum 3 characters).';
+      }
+    } else if (stepNumber === 4) {
+      if (!backgroundProblem || backgroundProblem.trim().length < 20) {
+        errors.background_problem = 'Please provide an adequate problem statement (minimum 20 characters).';
+      }
+    } else if (stepNumber === 5) {
+      if (!description || description.trim().length < 30) {
+        errors.description = 'Please articulate the detailed technical disclosure (minimum 30 characters).';
+      }
+      if (!noveltyFeatures || noveltyFeatures.trim().length < 20) {
+        errors.novelty_features = 'Please define the novel and inventive features (minimum 20 characters).';
+      }
+    } else if (stepNumber === 6) {
+      if (!practicalApplications || practicalApplications.trim().length < 20) {
+        errors.practical_applications = 'Please describe industrial or practical utility (minimum 20 characters).';
+      }
+    } else if (stepNumber === 7) {
+      if (uploadedDocs.length === 0) {
+        errors.documents = 'At least one technical specification document (PDF/DOCX) or drawing must be attached.';
+      }
+    }
+
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setFeedbackMessage({
+        type: 'error',
+        text: Object.values(errors)[0],
+      });
+      return false;
+    }
+
+    setFeedbackMessage(null);
+    return true;
+  };
+
+  const handleNextStep = (targetStep: number) => {
+    if (targetStep > currentStep) {
+      if (!validateStep(currentStep)) return;
+    }
+    setCurrentStep(targetStep);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const [title, setTitle] = useState<string>('');
   const [technicalField, setTechnicalField] = useState<string>('');
   const [backgroundProblem, setBackgroundProblem] = useState<string>('');
@@ -248,9 +351,25 @@ export const ApplicationFormPage: React.FC = () => {
         if (v && v.length > 0) errorsMap[k] = v[0];
       });
       setFormErrors(errorsMap);
+      
+      // Auto-navigate to earliest section with missing requirements
+      if (errorsMap.applicant_name || errorsMap.applicant_email || errorsMap.applicant_department || errorsMap.applicant_registration_number || errorsMap.applicant_phone) {
+        setCurrentStep(1);
+      } else if (Object.keys(errorsMap).some(k => k.startsWith('inventors') || k.startsWith('inventor'))) {
+        setCurrentStep(2);
+      } else if (errorsMap.title || errorsMap.technical_field) {
+        setCurrentStep(3);
+      } else if (errorsMap.background_problem) {
+        setCurrentStep(4);
+      } else if (errorsMap.description || errorsMap.novelty_features) {
+        setCurrentStep(5);
+      } else if (errorsMap.practical_applications) {
+        setCurrentStep(6);
+      }
+
       setFeedbackMessage({
         type: 'error',
-        text: 'Please correct mandatory form fields before submitting.',
+        text: Object.values(errorsMap)[0] || 'Please complete mandatory form fields before submitting.',
       });
       return;
     }
@@ -335,39 +454,70 @@ export const ApplicationFormPage: React.FC = () => {
         </div>
       )}
 
-      {/* Stepper Wizard Indicator */}
-      <div className="stepper">
-        <div className={`step-item ${currentStep === 1 ? 'active' : currentStep > 1 ? 'completed' : ''}`}>
-          <div className="step-number">1</div>
-          <span>Applicant</span>
+      {/* Redesigned Responsive Stage Navigation Track */}
+      <div style={{ marginBottom: '28px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '16px 20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+          <div>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Stage {currentStep} of {FORM_STAGES.length}: {FORM_STAGES[currentStep - 1].name}
+            </span>
+          </div>
+          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+            {Math.round((currentStep / FORM_STAGES.length) * 100)}% Completed
+          </span>
         </div>
-        <div className={`step-item ${currentStep === 2 ? 'active' : currentStep > 2 ? 'completed' : ''}`}>
-          <div className="step-number">2</div>
-          <span>Inventors</span>
+
+        {/* Progress bar line */}
+        <div style={{ width: '100%', height: '5px', backgroundColor: 'var(--border-light)', borderRadius: '3px', overflow: 'hidden', marginBottom: '14px' }}>
+          <div style={{ width: `${(currentStep / FORM_STAGES.length) * 100}%`, height: '100%', backgroundColor: 'var(--accent-primary)', transition: 'width 0.25s ease' }} />
         </div>
-        <div className={`step-item ${currentStep === 3 ? 'active' : currentStep > 3 ? 'completed' : ''}`}>
-          <div className="step-number">3</div>
-          <span>Invention Title</span>
-        </div>
-        <div className={`step-item ${currentStep === 4 ? 'active' : currentStep > 4 ? 'completed' : ''}`}>
-          <div className="step-number">4</div>
-          <span>Problem Statement</span>
-        </div>
-        <div className={`step-item ${currentStep === 5 ? 'active' : currentStep > 5 ? 'completed' : ''}`}>
-          <div className="step-number">5</div>
-          <span>Novelty & Tech</span>
-        </div>
-        <div className={`step-item ${currentStep === 6 ? 'active' : currentStep > 6 ? 'completed' : ''}`}>
-          <div className="step-number">6</div>
-          <span>Practical Use</span>
-        </div>
-        <div className={`step-item ${currentStep === 7 ? 'active' : currentStep > 7 ? 'completed' : ''}`}>
-          <div className="step-number">7</div>
-          <span>Documents</span>
-        </div>
-        <div className={`step-item ${currentStep === 8 ? 'active' : ''}`}>
-          <div className="step-number">8</div>
-          <span>Review</span>
+
+        {/* Step pill buttons (horizontally scrollable without truncation) */}
+        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+          {FORM_STAGES.map((s) => {
+            const isActive = currentStep === s.id;
+            const isCompleted = currentStep > s.id;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => handleNextStep(s.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 12px',
+                  borderRadius: '20px',
+                  border: isActive ? '1px solid var(--accent-primary)' : '1px solid var(--border-light)',
+                  backgroundColor: isActive ? 'var(--accent-primary)' : isCompleted ? '#ffffff' : 'transparent',
+                  color: isActive ? '#ffffff' : isCompleted ? 'var(--color-success)' : 'var(--text-secondary)',
+                  fontSize: '0.75rem',
+                  fontWeight: isActive ? 700 : 500,
+                  whiteSpace: 'nowrap',
+                  cursor: 'pointer',
+                  boxShadow: isActive ? '0 2px 6px rgba(10,25,47,0.15)' : 'none',
+                }}
+              >
+                <span
+                  style={{
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: isActive ? '#ffffff' : isCompleted ? 'var(--color-success)' : 'var(--border-light)',
+                    color: isActive ? 'var(--accent-primary)' : '#ffffff',
+                    fontSize: '0.6875rem',
+                    fontWeight: 700,
+                  }}
+                >
+                  {isCompleted ? '✓' : s.id}
+                </span>
+                {s.name}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -458,7 +608,7 @@ export const ApplicationFormPage: React.FC = () => {
             </div>
           </div>
           <div className="card-footer">
-            <button type="button" onClick={() => setCurrentStep(2)} className="btn btn-primary">
+            <button type="button" onClick={() => handleNextStep(2)} className="btn btn-primary">
               Next: Inventor Information
               <ArrowRight size={16} />
             </button>
@@ -568,10 +718,10 @@ export const ApplicationFormPage: React.FC = () => {
             ))}
           </div>
           <div className="card-footer">
-            <button type="button" onClick={() => setCurrentStep(1)} className="btn btn-outline">
+            <button type="button" onClick={() => handleNextStep(1)} className="btn btn-outline">
               <ArrowLeft size={16} /> Previous
             </button>
-            <button type="button" onClick={() => setCurrentStep(3)} className="btn btn-primary">
+            <button type="button" onClick={() => handleNextStep(3)} className="btn btn-primary">
               Next: Invention Title <ArrowRight size={16} />
             </button>
           </div>
@@ -617,10 +767,10 @@ export const ApplicationFormPage: React.FC = () => {
             </div>
           </div>
           <div className="card-footer">
-            <button type="button" onClick={() => setCurrentStep(2)} className="btn btn-outline">
+            <button type="button" onClick={() => handleNextStep(2)} className="btn btn-outline">
               <ArrowLeft size={16} /> Previous
             </button>
-            <button type="button" onClick={() => setCurrentStep(4)} className="btn btn-primary">
+            <button type="button" onClick={() => handleNextStep(4)} className="btn btn-primary">
               Next: Problem Statement <ArrowRight size={16} />
             </button>
           </div>
@@ -652,10 +802,10 @@ export const ApplicationFormPage: React.FC = () => {
             </div>
           </div>
           <div className="card-footer">
-            <button type="button" onClick={() => setCurrentStep(3)} className="btn btn-outline">
+            <button type="button" onClick={() => handleNextStep(3)} className="btn btn-outline">
               <ArrowLeft size={16} /> Previous
             </button>
-            <button type="button" onClick={() => setCurrentStep(5)} className="btn btn-primary">
+            <button type="button" onClick={() => handleNextStep(5)} className="btn btn-primary">
               Next: Description & Novelty <ArrowRight size={16} />
             </button>
           </div>
@@ -698,10 +848,10 @@ export const ApplicationFormPage: React.FC = () => {
             </div>
           </div>
           <div className="card-footer">
-            <button type="button" onClick={() => setCurrentStep(4)} className="btn btn-outline">
+            <button type="button" onClick={() => handleNextStep(4)} className="btn btn-outline">
               <ArrowLeft size={16} /> Previous
             </button>
-            <button type="button" onClick={() => setCurrentStep(6)} className="btn btn-primary">
+            <button type="button" onClick={() => handleNextStep(6)} className="btn btn-primary">
               Next: Practical Use <ArrowRight size={16} />
             </button>
           </div>
@@ -732,10 +882,10 @@ export const ApplicationFormPage: React.FC = () => {
             </div>
           </div>
           <div className="card-footer">
-            <button type="button" onClick={() => setCurrentStep(5)} className="btn btn-outline">
+            <button type="button" onClick={() => handleNextStep(5)} className="btn btn-outline">
               <ArrowLeft size={16} /> Previous
             </button>
-            <button type="button" onClick={() => setCurrentStep(7)} className="btn btn-primary">
+            <button type="button" onClick={() => handleNextStep(7)} className="btn btn-primary">
               Next: Supporting Documents <ArrowRight size={16} />
             </button>
           </div>
@@ -885,10 +1035,10 @@ export const ApplicationFormPage: React.FC = () => {
             </div>
           </div>
           <div className="card-footer">
-            <button type="button" onClick={() => setCurrentStep(6)} className="btn btn-outline">
+            <button type="button" onClick={() => handleNextStep(6)} className="btn btn-outline">
               <ArrowLeft size={16} /> Previous
             </button>
-            <button type="button" onClick={() => setCurrentStep(8)} className="btn btn-primary">
+            <button type="button" onClick={() => handleNextStep(8)} className="btn btn-primary">
               Next: Review & Submit <ArrowRight size={16} />
             </button>
           </div>
@@ -957,7 +1107,7 @@ export const ApplicationFormPage: React.FC = () => {
             </div>
           </div>
           <div className="card-footer">
-            <button type="button" onClick={() => setCurrentStep(7)} className="btn btn-outline">
+            <button type="button" onClick={() => handleNextStep(7)} className="btn btn-outline">
               <ArrowLeft size={16} /> Previous
             </button>
             <button

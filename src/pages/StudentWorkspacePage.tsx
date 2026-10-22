@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../features/auth/AuthContext';
 import {
   fetchApplications,
@@ -13,6 +13,11 @@ import {
 } from '../lib/api';
 import type { Application, Inventor, DocumentCategory } from '../types/database.types';
 import { getStatusDisplayName, getStatusBadgeClass } from '../features/applications/workflow';
+import {
+  COORDINATOR,
+  DEMO_PERSONAS,
+  INSTITUTION,
+} from '../config/constants';
 import {
   Shield,
   User,
@@ -32,8 +37,7 @@ import {
 } from 'lucide-react';
 
 export const StudentWorkspacePage: React.FC = () => {
-  const { currentUser, switchUserRoleForTesting } = useAuth();
-  const navigate = useNavigate();
+  const { currentUser } = useAuth();
 
   const [application, setApplication] = useState<Application | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -60,7 +64,11 @@ export const StudentWorkspacePage: React.FC = () => {
 
   // Load latest or active application for the current user
   const loadActiveApplication = async () => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      resetToEmptyTemplate();
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     try {
       const apps = await fetchApplications(currentUser);
@@ -82,6 +90,7 @@ export const StudentWorkspacePage: React.FC = () => {
       }
     } catch (err: unknown) {
       console.error('Failed to load application:', err);
+      resetToEmptyTemplate();
     } finally {
       setIsLoading(false);
     }
@@ -105,16 +114,16 @@ export const StudentWorkspacePage: React.FC = () => {
     );
     setInventors([
       {
-        full_name: currentUser?.full_name || 'Aditya Sharma',
-        email: currentUser?.university_email || 'aditya.sharma@muj.manipal.edu',
+        full_name: currentUser?.full_name || DEMO_PERSONAS.STUDENT_ADITYA.full_name,
+        email: currentUser?.university_email || DEMO_PERSONAS.STUDENT_ADITYA.email,
         phone: '+91 9876543210',
         affiliation_type: 'student',
-        department: 'Computer Science and Engineering',
+        department: currentUser?.department || INSTITUTION.DEPARTMENTS.CSE,
         is_primary: true,
       },
       {
         full_name: 'Dr. Anita Joshi',
-        email: 'anita.joshi@muj.manipal.edu',
+        email: `anita.joshi${INSTITUTION.EMAIL_AT_DOMAIN}`,
         phone: '+91 9876501234',
         affiliation_type: 'faculty',
         department: 'Electrical Engineering',
@@ -133,7 +142,13 @@ export const StudentWorkspacePage: React.FC = () => {
 
   // 1. SAVE DRAFT
   const handleSaveDraft = async () => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      setFeedback({
+        type: 'error',
+        text: 'Please sign in with your official university account to save your patent disclosure draft.',
+      });
+      return;
+    }
     setIsSaving(true);
     setFeedback(null);
     try {
@@ -168,7 +183,13 @@ export const StudentWorkspacePage: React.FC = () => {
 
   // 2. SUBMIT APPLICATION
   const handleSubmit = async () => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      setFeedback({
+        type: 'error',
+        text: 'Please sign in with your official university account to submit an invention disclosure.',
+      });
+      return;
+    }
     if (!title.trim() || !technicalField.trim() || !backgroundProblem.trim() || !description.trim()) {
       setFeedback({
         type: 'error',
@@ -199,7 +220,7 @@ export const StudentWorkspacePage: React.FC = () => {
       const submitted = await submitApplication(
         saved.id,
         currentUser.id,
-        'Submitted by student for official patent review.'
+        `Submitted by student for official patent review by ${COORDINATOR.FULL_NAME}.`
       );
       setApplication(submitted);
       setFeedback({
@@ -358,53 +379,62 @@ export const StudentWorkspacePage: React.FC = () => {
 
   return (
     <div className="container" style={{ padding: '28px 0 60px' }}>
-      {/* Top Testing Switcher & Quick Navigation */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          backgroundColor: 'var(--bg-secondary)',
-          border: '1px solid var(--border-medium)',
-          borderRadius: 'var(--radius-sm)',
-          padding: '10px 16px',
-          marginBottom: '24px',
-          flexWrap: 'wrap',
-          gap: '12px',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8125rem' }}>
-          <Shield size={16} color="var(--accent-primary)" />
-          <span style={{ fontWeight: 600 }}>Active Role:</span>
-          <span style={{ color: 'var(--text-primary)' }}>
-            {currentUser?.role === 'admin' ? 'Patent Review Cell (Admin)' : `Student Applicant (${currentUser?.full_name || 'Aditya Sharma'})`}
-          </span>
-        </div>
+      {/* Institutional Applicant Dossier Bar */}
+      {currentUser ? (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            backgroundColor: 'var(--bg-secondary)',
+            border: '1px solid var(--border-medium)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '10px 16px',
+            marginBottom: '24px',
+            flexWrap: 'wrap',
+            gap: '12px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8125rem' }}>
+            <User size={16} color="var(--accent-primary)" />
+            <span style={{ fontWeight: 600 }}>Applicant Dossier:</span>
+            <span style={{ color: 'var(--text-primary)' }}>
+              {currentUser.full_name} ({currentUser.university_email}) &bull; {currentUser.department || 'Manipal University Jaipur'}
+            </span>
+          </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <button
-            type="button"
-            onClick={() => switchUserRoleForTesting('student')}
-            className={`btn btn-sm ${currentUser?.role === 'student' ? 'btn-primary' : 'btn-outline'}`}
-          >
-            <User size={13} /> Student Mode
-          </button>
-          <button
-            type="button"
-            onClick={() => switchUserRoleForTesting('admin')}
-            className={`btn btn-sm ${currentUser?.role === 'admin' ? 'btn-primary' : 'btn-outline'}`}
-          >
-            <Shield size={13} /> Admin Mode
-          </button>
-          <Link
-            to="/admin/dashboard"
-            className="btn btn-outline btn-sm"
-            style={{ fontWeight: 600, borderColor: 'var(--accent-teal)', color: 'var(--accent-teal)' }}
-          >
-            Go to Admin Dashboard <ArrowRight size={13} />
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <Link to="/dashboard" className="btn btn-outline btn-sm">
+              View All My Disclosures <ArrowRight size={13} />
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            backgroundColor: '#f0f9ff',
+            border: '1px solid #bae6fd',
+            borderRadius: 'var(--radius-sm)',
+            padding: '12px 18px',
+            marginBottom: '24px',
+            flexWrap: 'wrap',
+            gap: '12px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.875rem', color: '#0369a1' }}>
+            <Info size={18} />
+            <span>
+              <strong>Institutional Disclosure Mode:</strong> You can draft technical details below. To save drafts or submit to Coordinator {COORDINATOR.FULL_NAME}, please sign in with your official account.
+            </span>
+          </div>
+          <Link to="/auth/login" className="btn btn-primary btn-sm">
+            Sign In with University ID &rarr;
           </Link>
         </div>
-      </div>
+      )}
 
       {/* Main Page Title Header */}
       <div
@@ -419,13 +449,13 @@ export const StudentWorkspacePage: React.FC = () => {
       >
         <div>
           <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Directorate of Research & Innovation | Patent Cell
+            {INSTITUTION.NAME} | {INSTITUTION.DEPARTMENTS.IPR_CELL}
           </div>
           <h1 style={{ fontSize: '1.75rem', margin: '4px 0 6px', color: 'var(--text-primary)' }}>
             Patent Application Workspace
           </h1>
           <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9375rem' }}>
-            Write, edit, draft, and submit your intellectual property disclosure. Submitted applications are screened directly by the university patent review cell.
+            Write, edit, draft, and submit your intellectual property disclosure. Submitted applications are screened directly by Patent Coordinator {COORDINATOR.FULL_NAME}.
           </p>
         </div>
 
@@ -558,17 +588,17 @@ export const StudentWorkspacePage: React.FC = () => {
           {/* Contextual Status Guidance */}
           {(!application || application.status === 'draft') && (
             <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-              <strong>Draft in Progress:</strong> You can edit and save your invention disclosure at any time. When all required sections are completed, click <strong>"Submit Application"</strong> to forward it to the Admin Dashboard for official university screening.
+              <strong>Draft in Progress:</strong> You can edit and save your invention disclosure at any time. When all required sections are completed, click <strong>"Submit Application"</strong> to forward it to {COORDINATOR.FULL_NAME} for official university screening.
             </p>
           )}
 
           {application?.status === 'submitted' && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
               <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                <strong>Application Submitted to Admin Dashboard:</strong> Your disclosure has been forwarded to the Patent Review Cell. The administrator can review the disclosure, resend it with a correction note if modifications are needed, or send it for further process. Editing is locked while awaiting review.
+                <strong>Application Submitted to Coordinator:</strong> Your disclosure has been forwarded to Patent Coordinator {COORDINATOR.FULL_NAME}. The coordinator can review the disclosure, request itemized corrections, or approve it for statutory filing. Editing is locked while awaiting review.
               </p>
               <Link to={`/admin/applications/${application.id}`} className="btn btn-outline btn-sm">
-                Open in Admin Review <ExternalLink size={12} />
+                Open in Coordinator Review <ExternalLink size={12} />
               </Link>
             </div>
           )}
@@ -576,10 +606,10 @@ export const StudentWorkspacePage: React.FC = () => {
           {application?.status === 'under_review' && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
               <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                <strong>Under Review by Patent Review Cell:</strong> The patent administrator is actively examining the technical claims, prior art distinctions, and attached files.
+                <strong>Under Review by {COORDINATOR.FULL_NAME}:</strong> The patent coordinator is actively examining the technical claims, prior art distinctions, and attached files.
               </p>
               <Link to={`/admin/applications/${application.id}`} className="btn btn-outline btn-sm">
-                Open in Admin Review <ExternalLink size={12} />
+                Open in Coordinator Review <ExternalLink size={12} />
               </Link>
             </div>
           )}
@@ -589,7 +619,7 @@ export const StudentWorkspacePage: React.FC = () => {
             <div style={{ marginTop: '10px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-danger)', marginBottom: '8px' }}>
                 <AlertTriangle size={18} />
-                <strong style={{ fontSize: '0.9375rem' }}>Note from Patent Review Cell (Action Required):</strong>
+                <strong style={{ fontSize: '0.9375rem' }}>Note from {COORDINATOR.FULL_NAME} (Action Required):</strong>
               </div>
 
               {application.correction_requests && application.correction_requests.length > 0 ? (
@@ -608,19 +638,19 @@ export const StudentWorkspacePage: React.FC = () => {
                         {corr.field_name ? `Requested Modification on: ${corr.field_name}` : 'General Reviewer Note'}
                       </div>
                       <div style={{ fontSize: '0.875rem', color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>
-                        "{corr.comment}"
+                        &ldquo;{corr.comment}&rdquo;
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
                 <p style={{ fontSize: '0.875rem', color: 'var(--text-primary)' }}>
-                  The reviewer requested revisions. Please review and update your disclosure fields below.
+                  The coordinator requested revisions. Please review and update your disclosure fields below.
                 </p>
               )}
 
               <p style={{ margin: '0 0 14px', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                The application fields below are unlocked for editing. Update your text, attach revised documents if requested, provide a summary note below, and click <strong>"Resubmit Application"</strong>.
+                The application fields below are unlocked for editing. Update your text, attach revised documents if requested, provide a summary note below, and click <strong>&ldquo;Resubmit Application&rdquo;</strong>.
               </p>
 
               {/* Resubmission Notes Field */}
@@ -634,7 +664,7 @@ export const StudentWorkspacePage: React.FC = () => {
               >
                 <div className="form-group" style={{ marginBottom: '10px' }}>
                   <label className="form-label">
-                    Student Resubmission Note (Explain how you addressed the reviewer's note) <span className="required">*</span>
+                    Student Resubmission Note (Explain how you addressed the coordinator&rsquo;s remarks) <span className="required">*</span>
                   </label>
                   <textarea
                     className="form-control"
@@ -653,7 +683,7 @@ export const StudentWorkspacePage: React.FC = () => {
                     onChange={(e) => setConfirmResolution(e.target.checked)}
                   />
                   <label htmlFor="confirmCheck" style={{ fontSize: '0.8125rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
-                    I confirm that I have addressed all reviewer modifications and that the updated disclosure is technically accurate.
+                    I confirm that I have addressed all coordinator modifications and that the updated disclosure is technically accurate.
                   </label>
                 </div>
               </div>
@@ -663,10 +693,10 @@ export const StudentWorkspacePage: React.FC = () => {
           {application?.status === 'resubmitted' && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
               <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                <strong>Version {application.current_version} Resubmitted:</strong> Your updated application with corrections has been sent back to the Admin Dashboard for re-evaluation.
+                <strong>Version {application.current_version} Resubmitted:</strong> Your updated application with corrections has been sent back to {COORDINATOR.FULL_NAME} for re-evaluation.
               </p>
               <Link to={`/admin/applications/${application.id}`} className="btn btn-outline btn-sm">
-                Open in Admin Review <ExternalLink size={12} />
+                Open in Coordinator Review <ExternalLink size={12} />
               </Link>
             </div>
           )}
@@ -675,10 +705,10 @@ export const StudentWorkspacePage: React.FC = () => {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-success)', marginBottom: '6px' }}>
                 <CheckCircle2 size={18} />
-                <strong style={{ fontSize: '0.9375rem' }}>Application Approved & Sent for Further Process!</strong>
+                <strong style={{ fontSize: '0.9375rem' }}>Application Approved by {COORDINATOR.FULL_NAME}!</strong>
               </div>
               <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                This disclosure has successfully passed internal university pre-screening and has been authorized for formal patent drafting and statutory Indian Patent Office (IPO) filing preparation with appointed patent attorneys.
+                This disclosure has successfully passed internal university pre-screening and has been authorized for formal patent drafting and statutory Indian Patent Office (IPO) filing preparation.
               </p>
             </div>
           )}
@@ -743,7 +773,7 @@ export const StudentWorkspacePage: React.FC = () => {
             {/* 3. Background Problem */}
             <div className="form-group">
               <label className="form-label">
-                3. Background Problem & Existing Limitations (Prior Art) <span className="required">*</span>
+                3. Background Problem &amp; Existing Limitations (Prior Art) <span className="required">*</span>
               </label>
               <textarea
                 className="form-control"
@@ -781,7 +811,7 @@ export const StudentWorkspacePage: React.FC = () => {
             {/* 5. Novelty Features */}
             <div className="form-group">
               <label className="form-label">
-                5. Novelty & Inventive Step (What makes it new?) <span className="required">*</span>
+                5. Novelty &amp; Inventive Step (What makes it new?) <span className="required">*</span>
               </label>
               <textarea
                 className="form-control"
@@ -793,14 +823,14 @@ export const StudentWorkspacePage: React.FC = () => {
                 required
               />
               <p className="form-helper">
-                This section is scrutinized by the Patent Review Cell to evaluate non-obviousness and novelty under patent law.
+                This section is scrutinized by {COORDINATOR.FULL_NAME} to evaluate non-obviousness and absolute novelty under Indian patent law.
               </p>
             </div>
 
             {/* 6. Practical Applications */}
             <div className="form-group">
               <label className="form-label">
-                6. Practical Applications & Industrial Applicability
+                6. Practical Applications &amp; Industrial Applicability
               </label>
               <textarea
                 className="form-control"
@@ -930,7 +960,7 @@ export const StudentWorkspacePage: React.FC = () => {
         {/* Document Attachments Card */}
         <div className="card">
           <div className="card-header">
-            <h2 className="card-title">Attached Technical Documents & Drawings</h2>
+            <h2 className="card-title">Attached Technical Documents &amp; Drawings</h2>
           </div>
 
           <div className="card-body">
@@ -1010,8 +1040,8 @@ export const StudentWorkspacePage: React.FC = () => {
                   >
                     <option value="complete_specification">Complete Specification (PDF / DOCX)</option>
                     <option value="drawings">Technical Drawings / Flowcharts (PDF / PNG)</option>
-                    <option value="prior_art_reference">Prior Art Comparison (PDF)</option>
-                    <option value="inventor_declaration">Inventor Declaration / NOC (PDF)</option>
+                    <option value="prior_art">Prior Art Comparison (PDF)</option>
+                    <option value="declaration">Inventor Declaration / NOC (PDF)</option>
                   </select>
 
                   <input
@@ -1094,7 +1124,7 @@ export const StudentWorkspacePage: React.FC = () => {
                   disabled={isSaving}
                 >
                   <Send size={16} />
-                  {isSaving ? 'Submitting...' : 'Submit Application to Admin'}
+                  {isSaving ? 'Submitting...' : 'Submit Application to Coordinator'}
                 </button>
               )}
 
@@ -1111,13 +1141,12 @@ export const StudentWorkspacePage: React.FC = () => {
               )}
 
               {application && application.status !== 'draft' && application.status !== 'corrections_required' && (
-                <button
-                  type="button"
-                  onClick={() => navigate('/admin/dashboard')}
+                <Link
+                  to="/admin/dashboard"
                   className="btn btn-secondary"
                 >
-                  <Shield size={16} /> Open in Admin Dashboard
-                </button>
+                  <Shield size={16} /> Open in Coordinator Registry
+                </Link>
               )}
             </div>
           </div>

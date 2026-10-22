@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../features/auth/AuthContext';
 import {
   fetchApplicationById,
-  getDocumentSignedUrl,
+  downloadSecureDocument,
   transitionApplicationStatus,
   createCorrectionRequest,
   addApplicationComment,
@@ -15,7 +15,6 @@ import {
   getStatusDisplayName,
 } from '../features/applications/workflow';
 import {
-  ShieldCheck,
   CheckCircle2,
   AlertTriangle,
   AlertCircle,
@@ -23,11 +22,15 @@ import {
   Send,
   PlusCircle,
   MessageSquare,
+  KeyRound,
+  GitCompare,
 } from 'lucide-react';
+import { COORDINATOR } from '../config/constants';
+import { VersionDiffViewer } from '../components/VersionDiffViewer';
 
 export const AdminApplicationReviewPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { currentUser } = useAuth();
+  const { currentUser, isAal2, verifyTotpMfa } = useAuth();
 
   const [application, setApplication] = useState<Application | null>(null);
   const [comments, setComments] = useState<ApplicationComment[]>([]);
@@ -45,6 +48,11 @@ export const AdminApplicationReviewPage: React.FC = () => {
   // Approval Modal State
   const [showApproveModal, setShowApproveModal] = useState<boolean>(false);
   const [approvalNotes, setApprovalNotes] = useState<string>('');
+  const [mfaCode, setMfaCode] = useState<string>('');
+  const [mfaError, setMfaError] = useState<string | null>(null);
+
+  // Version Diff Inspector State
+  const [showDiffViewer, setShowDiffViewer] = useState<boolean>(false);
 
   useEffect(() => {
     async function loadData() {
@@ -72,16 +80,9 @@ export const AdminApplicationReviewPage: React.FC = () => {
 
   const handleDownloadDoc = async (path: string, filename: string) => {
     try {
-      const url = await getDocumentSignedUrl(path);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      link.target = '_blank';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      await downloadSecureDocument(path, filename);
     } catch {
-      alert('Unable to generate secure download link.');
+      alert('Unable to download secure document.');
     }
   };
 
@@ -93,7 +94,7 @@ export const AdminApplicationReviewPage: React.FC = () => {
         application.id,
         'under_review',
         currentUser,
-        'Patent Review Cell commenced active screening.'
+        `${COORDINATOR.FULL_NAME} commenced active examination.`
       );
       setApplication(updated);
       setFeedbackMessage({
@@ -136,7 +137,7 @@ export const AdminApplicationReviewPage: React.FC = () => {
         application.id,
         'corrections_required',
         currentUser,
-        `Patent Review Cell requested ${itemsToSend.length} correction(s).`
+        `${COORDINATOR.FULL_NAME} requested ${itemsToSend.length} itemized correction(s).`
       );
 
       setApplication(updated);
@@ -145,7 +146,7 @@ export const AdminApplicationReviewPage: React.FC = () => {
       setCorrectionComment('');
       setFeedbackMessage({
         type: 'success',
-        text: 'Corrections successfully dispatched to the student with note. In-portal notification delivered.',
+        text: 'Corrections successfully dispatched to the student with notification.',
       });
     } catch (err: unknown) {
       setFeedbackMessage({
@@ -159,13 +160,28 @@ export const AdminApplicationReviewPage: React.FC = () => {
 
   const handleConfirmApproval = async () => {
     if (!application || !currentUser) return;
+    setMfaError(null);
+
+    // If AAL2 step-up required, verify code
+    if (!isAal2) {
+      if (!mfaCode.trim()) {
+        setMfaError('Please enter your 6-digit TOTP coordinator authenticator code.');
+        return;
+      }
+      const verified = await verifyTotpMfa(mfaCode.trim());
+      if (!verified) {
+        setMfaError('Invalid TOTP authenticator code. In demo mode, use 123456.');
+        return;
+      }
+    }
+
     setIsActionLoading(true);
     try {
       const updated = await transitionApplicationStatus(
         application.id,
         'approved_next_stage',
         currentUser,
-        approvalNotes.trim() || 'Approved by Patent Review Cell for internal filing preparation.'
+        approvalNotes.trim() || `Approved by ${COORDINATOR.FULL_NAME} for statutory patent drafting.`
       );
       setApplication(updated);
       setShowApproveModal(false);
@@ -199,7 +215,7 @@ export const AdminApplicationReviewPage: React.FC = () => {
   if (isLoading) {
     return (
       <div className="container" style={{ padding: '60px 0', textAlign: 'center' }}>
-        <p>Loading application review console...</p>
+        <p>Loading application review dossier...</p>
       </div>
     );
   }
@@ -207,93 +223,82 @@ export const AdminApplicationReviewPage: React.FC = () => {
   if (!application) {
     return (
       <div className="container" style={{ padding: '40px 0' }}>
-        <div className="alert alert-danger">Application not found</div>
+        <div className="alert alert-danger">Application not found or inaccessible.</div>
         <Link to="/admin/dashboard" className="btn btn-outline">
-          &larr; Return to Admin Registry
+          &larr; Return to Coordinator Registry
         </Link>
       </div>
     );
   }
 
   return (
-    <div className="container">
-      {/* Header and Breadcrumbs */}
+    <div className="container" style={{ padding: '24px 0 60px' }}>
+      {/* Top Breadcrumb & Actions */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          marginBottom: '28px',
+          alignItems: 'center',
+          marginBottom: '20px',
           flexWrap: 'wrap',
-          gap: '16px',
+          gap: '12px',
         }}
       >
-        <div>
-          <Link to="/admin/dashboard" style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-            &larr; Back to Admin Registry
-          </Link>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '6px' }}>
-            <h1 style={{ fontSize: '1.5rem', margin: 0 }}>Review: {application.reference_number}</h1>
-            <span className={getStatusBadgeClass(application.status)}>
-              {getStatusDisplayName(application.status)}
-            </span>
-            <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-              Version {application.current_version}
-            </span>
-          </div>
-          <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-            Applicant: <strong>{application.profiles?.full_name}</strong> ({application.profiles?.university_email})
-          </p>
-        </div>
+        <Link to="/admin/dashboard" className="btn btn-outline btn-sm">
+          &larr; Back to Screening Registry
+        </Link>
 
-        {/* Action Controls for Admin */}
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          {(application.status === 'submitted' || application.status === 'under_review' || application.status === 'resubmitted') && (
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {((application.application_versions && application.application_versions.length > 0) ||
+            application.current_version > 1) && (
+            <button
+              type="button"
+              onClick={() => setShowDiffViewer(!showDiffViewer)}
+              className="btn btn-outline btn-sm"
+              style={{
+                borderColor: showDiffViewer ? '#0284c7' : '#cbd5e1',
+                color: showDiffViewer ? '#0284c7' : '#334155',
+                backgroundColor: showDiffViewer ? '#f0f9ff' : 'transparent',
+              }}
+            >
+              <GitCompare size={14} />
+              {showDiffViewer ? 'Hide Version Diff' : 'Compare Versions (Diff)'}
+            </button>
+          )}
+
+          {application.status === 'submitted' && (
+            <button
+              type="button"
+              onClick={handleStartReview}
+              className="btn btn-primary btn-sm"
+              disabled={isActionLoading}
+            >
+              Commence Active Review
+            </button>
+          )}
+
+          {(application.status === 'under_review' ||
+            application.status === 'submitted' ||
+            application.status === 'resubmitted') && (
             <>
-              {application.status === 'submitted' && (
-                <button
-                  type="button"
-                  onClick={handleStartReview}
-                  className="btn btn-outline"
-                  disabled={isActionLoading}
-                >
-                  Mark Under Review
-                </button>
-              )}
               <button
                 type="button"
                 onClick={() => setShowCorrectionModal(true)}
-                className="btn btn-danger"
+                className="btn btn-danger btn-sm"
                 disabled={isActionLoading}
               >
-                <AlertTriangle size={15} />
-                Resend to Student for Corrections
+                Request Corrections
               </button>
               <button
                 type="button"
                 onClick={() => setShowApproveModal(true)}
-                className="btn btn-secondary"
+                className="btn btn-primary btn-sm"
                 disabled={isActionLoading}
               >
-                <CheckCircle2 size={15} />
-                Send for Further Process
+                <CheckCircle2 size={14} />
+                Approve for Next Stage
               </button>
             </>
-          )}
-
-          {application.status === 'approved_next_stage' && (
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                color: 'var(--color-success)',
-                fontWeight: 600,
-                fontSize: '0.875rem',
-              }}
-            >
-              <CheckCircle2 size={18} /> Sent for Further Process
-            </div>
           )}
         </div>
       </div>
@@ -301,362 +306,414 @@ export const AdminApplicationReviewPage: React.FC = () => {
       {feedbackMessage && (
         <div
           className={`alert ${feedbackMessage.type === 'success' ? 'alert-success' : 'alert-danger'}`}
-          style={{ marginBottom: '24px' }}
+          style={{ marginBottom: '20px' }}
         >
-          {feedbackMessage.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
-          <div>{feedbackMessage.text}</div>
+          {feedbackMessage.text}
         </div>
       )}
 
-      {/* Main Review Layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
-        {/* Left: Full Disclosure */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          <div className="card">
-            <div className="card-header">
-              <h3 className="card-title">Technical Disclosure Details</h3>
+      {/* Version Diff Inspector */}
+      {showDiffViewer && (
+        <VersionDiffViewer
+          application={application}
+          versions={application.application_versions}
+          onClose={() => setShowDiffViewer(false)}
+        />
+      )}
+
+      {/* Main Review Card */}
+      <div className="card" style={{ marginBottom: '24px' }}>
+        <div className="card-header" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+              <strong style={{ fontFamily: 'var(--font-mono)', fontSize: '1.125rem' }}>
+                {application.reference_number}
+              </strong>
+              <span className={getStatusBadgeClass(application.status)}>
+                {getStatusDisplayName(application.status)}
+              </span>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                Version {application.current_version}
+              </span>
             </div>
-            <div className="card-body">
-              <div style={{ marginBottom: '20px' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                  Invention Title
-                </span>
-                <h2 style={{ fontSize: '1.25rem', marginTop: '4px', color: 'var(--text-primary)' }}>
-                  {application.title}
-                </h2>
-              </div>
-
-              <div style={{ marginBottom: '20px' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                  Technical Domain
-                </span>
-                <p style={{ marginTop: '4px' }}>{application.technical_field}</p>
-              </div>
-
-              <div style={{ marginBottom: '20px' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                  Background & Technical Problem
-                </span>
-                <p style={{ marginTop: '4px', whiteSpace: 'pre-wrap' }}>{application.background_problem}</p>
-              </div>
-
-              <div style={{ marginBottom: '20px' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                  Comprehensive Description
-                </span>
-                <p style={{ marginTop: '4px', whiteSpace: 'pre-wrap' }}>{application.description}</p>
-              </div>
-
-              <div style={{ marginBottom: '20px' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                  Novelty & Distinguishing Characteristics
-                </span>
-                <p style={{ marginTop: '4px', whiteSpace: 'pre-wrap' }}>{application.novelty_features}</p>
-              </div>
-
-              <div>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                  Commercial & Practical Applications
-                </span>
-                <p style={{ marginTop: '4px', whiteSpace: 'pre-wrap' }}>{application.practical_applications}</p>
-              </div>
-            </div>
+            <h1 style={{ fontSize: '1.25rem', margin: 0, color: 'var(--text-primary)' }}>
+              {application.title}
+            </h1>
           </div>
 
-          {/* Inventors */}
-          <div className="card">
-            <div className="card-header">
-              <h3 className="card-title">Inventor Registry</h3>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>
+              {application.profiles?.full_name}
             </div>
-            <div className="card-body" style={{ padding: 0 }}>
-              <div className="table-responsive">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Inventor</th>
-                      <th>Affiliation</th>
-                      <th>Department</th>
-                      <th>Role</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {application.inventors?.map((inv) => (
-                      <tr key={inv.id}>
-                        <td>
-                          <div style={{ fontWeight: 600 }}>{inv.full_name}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{inv.email}</div>
-                        </td>
-                        <td style={{ textTransform: 'capitalize' }}>{inv.affiliation_type}</td>
-                        <td>{inv.department}</td>
-                        <td>
-                          {inv.is_primary ? (
-                            <span style={{ color: 'var(--accent-primary)', fontWeight: 600, fontSize: '0.75rem' }}>
-                              Lead Inventor
-                            </span>
-                          ) : (
-                            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Co-Inventor</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          {/* Coordinator Notes */}
-          <div className="card">
-            <div className="card-header">
-              <h3 className="card-title">Coordinator Notes & Guidance</h3>
-            </div>
-            <div className="card-body">
-              {comments.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
-                  {comments.map((c) => (
-                    <div
-                      key={c.id}
-                      style={{
-                        padding: '10px 14px',
-                        backgroundColor: 'var(--bg-secondary)',
-                        borderRadius: 'var(--radius-sm)',
-                        fontSize: '0.875rem',
-                      }}
-                    >
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '2px' }}>
-                        {c.author?.full_name || 'Coordinator'} ({new Date(c.created_at).toLocaleDateString('en-IN')})
-                      </div>
-                      <div>{c.content}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <form onSubmit={handlePostAdminComment} style={{ display: 'flex', gap: '8px' }}>
-                <input
-                  type="text"
-                  className="form-control"
-                  placeholder="Add note or pre-screening guidance..."
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                />
-                <button type="submit" className="btn btn-outline btn-sm" disabled={!newComment.trim()}>
-                  <MessageSquare size={14} /> Add Note
-                </button>
-              </form>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              {application.profiles?.university_email} | {application.profiles?.department || 'Department Unassigned'}
             </div>
           </div>
         </div>
 
-        {/* Right: Documents, Audit History, and Existing Corrections */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* Documents */}
-          <div className="card">
-            <div className="card-header">
-              <h3 className="card-title">Confidential Documents</h3>
-            </div>
-            <div className="card-body">
-              {application.application_documents && application.application_documents.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {application.application_documents.map((doc) => (
-                    <div
-                      key={doc.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '10px 12px',
-                        border: '1px solid var(--border-light)',
-                        borderRadius: 'var(--radius-sm)',
-                        backgroundColor: 'var(--bg-secondary)',
-                      }}
-                    >
-                      <div style={{ minWidth: 0, flex: 1, paddingRight: '8px' }}>
-                        <div
-                          style={{
-                            fontWeight: 600,
-                            fontSize: '0.8125rem',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {doc.original_filename}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          {doc.document_category} | {(doc.file_size_bytes / (1024 * 1024)).toFixed(2)} MB
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDownloadDoc(doc.storage_path, doc.original_filename)}
-                        className="btn btn-outline btn-sm"
-                        title="Download Document"
-                      >
-                        <Download size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>No attached documents.</p>
-              )}
+        <div className="card-body">
+          {/* Technical Field */}
+          <div style={{ marginBottom: '20px' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Technical Field
+            </span>
+            <div style={{ fontSize: '0.9375rem', color: 'var(--text-primary)', marginTop: '2px' }}>
+              {application.technical_field}
             </div>
           </div>
 
-          {/* Existing Correction History */}
-          <div className="card">
-            <div className="card-header">
-              <h3 className="card-title">Correction History</h3>
-            </div>
-            <div className="card-body">
-              {application.correction_requests && application.correction_requests.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {application.correction_requests.map((c) => (
-                    <div
-                      key={c.id}
-                      style={{
-                        padding: '10px 12px',
-                        backgroundColor: c.status === 'pending' ? 'var(--color-danger-bg)' : 'var(--bg-secondary)',
-                        border: '1px solid var(--border-light)',
-                        borderRadius: 'var(--radius-sm)',
-                        fontSize: '0.8125rem',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                        <strong>{c.field_name || 'Document'}</strong>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: c.status === 'pending' ? 'var(--color-danger)' : 'var(--color-success)' }}>
-                          {c.status.toUpperCase()}
-                        </span>
-                      </div>
-                      <p style={{ margin: 0, color: 'var(--text-primary)' }}>{c.comment}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>No corrections requested on record.</p>
-              )}
+          {/* Background Problem */}
+          <div style={{ marginBottom: '20px' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Background Problem &amp; Prior Art Deficiencies
+            </span>
+            <div
+              style={{
+                fontSize: '0.875rem',
+                lineHeight: 1.6,
+                color: 'var(--text-secondary)',
+                marginTop: '4px',
+                whiteSpace: 'pre-wrap',
+                backgroundColor: 'var(--bg-secondary)',
+                padding: '12px',
+                borderRadius: 'var(--radius-sm)',
+              }}
+            >
+              {application.background_problem}
             </div>
           </div>
 
-          {/* Audit Log */}
-          <div className="card">
-            <div className="card-header">
-              <h3 className="card-title">Audit Log</h3>
+          {/* Detailed Description */}
+          <div style={{ marginBottom: '20px' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Detailed Technical Description
+            </span>
+            <div
+              style={{
+                fontSize: '0.875rem',
+                lineHeight: 1.6,
+                color: 'var(--text-secondary)',
+                marginTop: '4px',
+                whiteSpace: 'pre-wrap',
+                backgroundColor: 'var(--bg-secondary)',
+                padding: '12px',
+                borderRadius: 'var(--radius-sm)',
+              }}
+            >
+              {application.description}
             </div>
-            <div className="card-body">
-              {application.application_status_history?.map((hist) => (
+          </div>
+
+          {/* Novelty Features */}
+          <div style={{ marginBottom: '20px' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Novelty &amp; Inventive Step
+            </span>
+            <div
+              style={{
+                fontSize: '0.875rem',
+                lineHeight: 1.6,
+                color: 'var(--text-secondary)',
+                marginTop: '4px',
+                whiteSpace: 'pre-wrap',
+                backgroundColor: 'var(--bg-secondary)',
+                padding: '12px',
+                borderRadius: 'var(--radius-sm)',
+              }}
+            >
+              {application.novelty_features}
+            </div>
+          </div>
+
+          {/* Practical Applications */}
+          {application.practical_applications && (
+            <div style={{ marginBottom: '20px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                Practical Applications &amp; Utility
+              </span>
+              <div
+                style={{
+                  fontSize: '0.875rem',
+                  lineHeight: 1.6,
+                  color: 'var(--text-secondary)',
+                  marginTop: '4px',
+                  whiteSpace: 'pre-wrap',
+                  backgroundColor: 'var(--bg-secondary)',
+                  padding: '12px',
+                  borderRadius: 'var(--radius-sm)',
+                }}
+              >
+                {application.practical_applications}
+              </div>
+            </div>
+          )}
+
+          {/* Inventors Section */}
+          <div style={{ marginBottom: '24px' }}>
+            <h3 style={{ fontSize: '0.9375rem', marginBottom: '10px' }}>Inventors Roster</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '10px' }}>
+              {(application.inventors || []).map((inv, idx) => (
                 <div
-                  key={hist.id}
+                  key={inv.id || idx}
                   style={{
-                    borderLeft: '2px solid var(--border-medium)',
-                    paddingLeft: '12px',
-                    marginBottom: '14px',
+                    padding: '10px 12px',
+                    border: '1px solid var(--border-light)',
+                    borderRadius: 'var(--radius-sm)',
+                    backgroundColor: inv.is_primary ? 'var(--bg-secondary)' : 'var(--bg-primary)',
                   }}
                 >
-                  <div style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
-                    {getStatusDisplayName(hist.to_status)}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                    {hist.reason || 'Transition recorded.'}
+                  <div style={{ fontWeight: 600, fontSize: '0.8125rem' }}>
+                    {inv.full_name} {inv.is_primary && '(Lead Applicant)'}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    {new Date(hist.created_at).toLocaleString('en-IN')}
+                    {inv.email}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    {inv.affiliation_type} &bull; {inv.department}
                   </div>
                 </div>
               ))}
             </div>
           </div>
+
+          {/* Attached Technical Documents */}
+          <div>
+            <h3 style={{ fontSize: '0.9375rem', marginBottom: '10px' }}>Submitted Files &amp; Drawings</h3>
+            {application.application_documents && application.application_documents.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {application.application_documents.map((doc) => (
+                  <div
+                    key={doc.id}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '8px 12px',
+                      backgroundColor: 'var(--bg-secondary)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--border-light)',
+                    }}
+                  >
+                    <div>
+                      <strong style={{ fontSize: '0.8125rem' }}>{doc.original_filename}</strong>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '8px' }}>
+                        ({doc.document_category} &bull; {(doc.file_size_bytes / 1024).toFixed(1)} KB)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadDoc(doc.storage_path, doc.original_filename)}
+                      className="btn btn-outline btn-sm"
+                    >
+                      <Download size={13} /> Secure Download
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                No technical specifications or drawings uploaded.
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* REQUEST CORRECTIONS MODAL */}
-      {showCorrectionModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '640px' }}>
-            <div className="card-header">
-              <h3 className="card-title">Resend to Student for Corrections</h3>
+      {/* Internal Notes & Status History */}
+      <div className="grid-2" style={{ gap: '20px' }}>
+        {/* Verification Status Audit Log */}
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">Verified Audit Trail</h3>
+          </div>
+          <div className="card-body" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {(application.application_status_history || []).map((hist) => (
+                <li
+                  key={hist.id}
+                  style={{
+                    padding: '8px 0',
+                    borderBottom: '1px solid var(--border-light)',
+                    fontSize: '0.8125rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-primary)' }}>
+                    <strong>{getStatusDisplayName(hist.to_status)}</strong>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      {new Date(hist.created_at).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                  {hist.reason && (
+                    <div style={{ color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      {hist.reason}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {/* Review Notes & Coordinator Comments */}
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">Coordinator Review Notes</h3>
+          </div>
+          <div className="card-body">
+            <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '12px' }}>
+              {comments.length === 0 ? (
+                <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', margin: 0 }}>
+                  No internal notes recorded yet.
+                </p>
+              ) : (
+                comments.map((comm) => (
+                  <div
+                    key={comm.id}
+                    style={{
+                      padding: '8px',
+                      backgroundColor: 'var(--bg-secondary)',
+                      borderRadius: 'var(--radius-sm)',
+                      marginBottom: '8px',
+                      fontSize: '0.8125rem',
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {comm.author?.full_name || 'Coordinator'}:
+                    </div>
+                    <div style={{ color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      {comm.content}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
+
+            <form onSubmit={handlePostAdminComment}>
+              <div className="form-group" style={{ marginBottom: '8px' }}>
+                <textarea
+                  className="form-control"
+                  rows={2}
+                  placeholder="Record an internal examination note..."
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                />
+              </div>
+              <button type="submit" className="btn btn-outline btn-sm">
+                <MessageSquare size={13} /> Add Note
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      {/* CORRECTION REQUEST MODAL */}
+      {showCorrectionModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '16px',
+          }}
+        >
+          <div className="card" style={{ maxWidth: '600px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="card-header" style={{ justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-danger)' }}>
+                <AlertTriangle size={18} />
+                <h3 className="card-title" style={{ color: 'var(--color-danger)' }}>
+                  Author Itemized Correction Request
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCorrectionModal(false)}
+                className="btn btn-outline btn-sm"
+              >
+                Cancel
+              </button>
+            </div>
+
             <div className="card-body">
-              <p style={{ fontSize: '0.875rem', marginBottom: '16px' }}>
-                Specify your correction note or itemize sections that require revision by the student.
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                Specify targeted feedback on technical fields or documents. The application will be unlocked for the student with your notes displayed.
               </p>
 
-              <div
-                style={{
-                  padding: '14px',
-                  backgroundColor: 'var(--bg-secondary)',
-                  border: '1px solid var(--border-light)',
-                  borderRadius: 'var(--radius-sm)',
-                  marginBottom: '16px',
-                }}
-              >
-                <div className="form-group">
-                  <label className="form-label">Affected Section / Document</label>
-                  <select
-                    className="form-control"
-                    value={correctionField}
-                    onChange={(e) => setCorrectionField(e.target.value)}
-                  >
-                    <option value="title">Invention Title</option>
-                    <option value="technical_field">Technical Field</option>
-                    <option value="background_problem">Problem Statement / Prior Art</option>
-                    <option value="description">Detailed Description</option>
-                    <option value="novelty_features">Novelty Features</option>
-                    <option value="practical_applications">Practical / Industrial Utility</option>
-                    <option value="inventors">Inventors Roster</option>
-                    <option value="document_specification">Document: Specification File</option>
-                    <option value="document_drawings">Document: Technical Drawings</option>
-                    <option value="document_declaration">Document: Declaration / NOC</option>
-                  </select>
+              {/* Items to send list */}
+              {correctionsList.length > 0 && (
+                <div style={{ marginBottom: '16px' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                    Staged Correction Items ({correctionsList.length}):
+                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                    {correctionsList.map((c, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '6px 10px',
+                          backgroundColor: 'var(--bg-secondary)',
+                          border: '1px solid var(--border-light)',
+                          borderRadius: 'var(--radius-sm)',
+                          fontSize: '0.8125rem',
+                        }}
+                      >
+                        <strong>Field: {c.field}</strong> &bull; {c.comment}
+                      </div>
+                    ))}
+                  </div>
                 </div>
+              )}
 
-                <div className="form-group">
-                  <label className="form-label">Reviewer Note / Required Modifications <span className="required">*</span></label>
-                  <textarea
-                    className="form-control"
-                    rows={4}
-                    placeholder="Enter clear instructions and notes describing what the student must correct or clarify..."
-                    value={correctionComment}
-                    onChange={(e) => setCorrectionComment(e.target.value)}
-                  />
-                </div>
+              <div className="form-group">
+                <label className="form-label">Target Section / Field</label>
+                <select
+                  className="form-control"
+                  value={correctionField}
+                  onChange={(e) => setCorrectionField(e.target.value)}
+                >
+                  <option value="title">Title of Invention</option>
+                  <option value="technical_field">Technical Field</option>
+                  <option value="background_problem">Background Problem &amp; Prior Art</option>
+                  <option value="description">Detailed Description</option>
+                  <option value="novelty_features">Novelty &amp; Inventive Steps</option>
+                  <option value="practical_applications">Practical Applications</option>
+                  <option value="inventors">Inventors Roster</option>
+                  <option value="complete_specification">Attached Specification Document</option>
+                  <option value="drawings">Technical Drawings / Diagrams</option>
+                </select>
+              </div>
 
+              <div className="form-group">
+                <label className="form-label">Reviewer Instructions / Defect Description</label>
+                <textarea
+                  className="form-control"
+                  rows={3}
+                  placeholder="e.g. Please clarify the dynamic impedance tuning mechanism and include quantitative experimental metrics."
+                  value={correctionComment}
+                  onChange={(e) => setCorrectionComment(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
                 <button
                   type="button"
                   onClick={handleAddCorrectionItem}
                   className="btn btn-outline btn-sm"
                   disabled={!correctionComment.trim()}
                 >
-                  <PlusCircle size={14} /> Add Another Item
+                  <PlusCircle size={14} /> Add Another Remark
                 </button>
               </div>
-
-              {/* Added items list */}
-              {correctionsList.length > 0 && (
-                <div style={{ marginBottom: '16px' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                    Items Queued for Dispatch ({correctionsList.length}):
-                  </span>
-                  <ul style={{ paddingLeft: '20px', marginTop: '6px', fontSize: '0.875rem' }}>
-                    {correctionsList.map((item, idx) => (
-                      <li key={idx} style={{ marginBottom: '4px' }}>
-                        <strong>{item.field}:</strong> "{item.comment}"
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </div>
-            <div className="card-footer">
+
+            <div className="card-footer" style={{ justifyContent: 'flex-end', gap: '10px' }}>
               <button
                 type="button"
-                onClick={() => {
-                  setShowCorrectionModal(false);
-                  setCorrectionsList([]);
-                  setCorrectionComment('');
-                }}
+                onClick={() => setShowCorrectionModal(false)}
                 className="btn btn-outline"
-                disabled={isActionLoading}
               >
                 Cancel
               </button>
@@ -666,56 +723,106 @@ export const AdminApplicationReviewPage: React.FC = () => {
                 className="btn btn-danger"
                 disabled={isActionLoading || (correctionsList.length === 0 && !correctionComment.trim())}
               >
-                <Send size={15} />
-                {isActionLoading ? 'Resending...' : 'Resend to Student with Note'}
+                <Send size={14} /> Dispatch Correction Request
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* APPROVE / FURTHER PROCESS MODAL */}
+      {/* APPROVAL MODAL */}
       {showApproveModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '16px',
+          }}
+        >
+          <div className="card" style={{ maxWidth: '520px', width: '100%' }}>
             <div className="card-header">
-              <h3 className="card-title">Send for Further Process</h3>
-            </div>
-            <div className="card-body">
-              <div className="alert alert-info" style={{ marginBottom: '16px' }}>
-                <ShieldCheck size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
-                <div>
-                  <strong>Institutional Scope:</strong> Sending for further process confirms that this disclosure has passed university pre-screening and is authorized to move to the internal patent drafting and filing phase.
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-success)' }}>
+                <CheckCircle2 size={20} />
+                <h3 className="card-title" style={{ color: 'var(--color-success)' }}>
+                  Authorize Statutory Next Stage
+                </h3>
               </div>
+            </div>
+
+            <div className="card-body">
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '14px' }}>
+                You are approving application <strong>{application.reference_number}</strong>. This confirms that {COORDINATOR.FULL_NAME} has vetted the technical disclosure and authorized forwarding to the IPR drafting attorney cell.
+              </p>
+
+              {mfaError && (
+                <div className="alert alert-danger" style={{ marginBottom: '12px' }}>
+                  <AlertCircle size={16} />
+                  <span>{mfaError}</span>
+                </div>
+              )}
+
+              {/* AAL2 MFA Check */}
+              {!isAal2 && (
+                <div
+                  style={{
+                    padding: '12px',
+                    backgroundColor: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-medium)',
+                    borderRadius: 'var(--radius-sm)',
+                    marginBottom: '14px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                    <KeyRound size={15} color="var(--accent-teal)" />
+                    <span>AAL2 Coordinator Authentication Required</span>
+                  </div>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 8px' }}>
+                    Enter 6-digit TOTP code to authorize this statutory transition (Demo: 123456).
+                  </p>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    className="form-control"
+                    placeholder="123456"
+                    value={mfaCode}
+                    onChange={(e) => setMfaCode(e.target.value)}
+                    style={{ fontFamily: 'var(--font-mono)', letterSpacing: '0.2em', textAlign: 'center' }}
+                  />
+                </div>
+              )}
 
               <div className="form-group">
-                <label className="form-label">Forwarding / Filing Notes (Optional)</label>
+                <label className="form-label">Coordinator Clearance Note (Optional)</label>
                 <textarea
                   className="form-control"
-                  rows={3}
-                  placeholder="e.g. Cleared for Form 1 and Form 2 drafting with appointed patent attorney."
+                  rows={2}
+                  placeholder={COORDINATOR.APPROVAL_REASON_DEFAULT}
                   value={approvalNotes}
                   onChange={(e) => setApprovalNotes(e.target.value)}
                 />
               </div>
             </div>
-            <div className="card-footer">
+
+            <div className="card-footer" style={{ justifyContent: 'flex-end', gap: '10px' }}>
               <button
                 type="button"
                 onClick={() => setShowApproveModal(false)}
                 className="btn btn-outline"
-                disabled={isActionLoading}
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleConfirmApproval}
-                className="btn btn-secondary"
+                className="btn btn-primary"
                 disabled={isActionLoading}
               >
-                {isActionLoading ? 'Processing...' : 'Confirm & Send for Further Process'}
+                <CheckCircle2 size={14} /> Confirm Statutory Approval
               </button>
             </div>
           </div>

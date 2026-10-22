@@ -1,188 +1,279 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../features/auth/AuthContext';
-import { FileText, LogOut, Shield, User } from 'lucide-react';
+import {
+  LogOut,
+  Settings,
+  BookOpen,
+  ChevronRight,
+  ShieldCheck,
+  Shield,
+} from 'lucide-react';
+import { INSTITUTION, COORDINATOR } from '../config/constants';
+import { GuidelinesModal } from '../components/GuidelinesModal';
+
+/* --- Logo helpers -------------------------------------------------------- */
+
+function useLogo(src: string): boolean {
+  const [ok, setOk] = React.useState(false);
+  React.useEffect(() => {
+    const img = new Image();
+    img.onload = () => setOk(true);
+    img.onerror = () => setOk(false);
+    img.src = src;
+  }, [src]);
+  return ok;
+}
+
+function initials(name: string): string {
+  return name
+    .split(' ')
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase();
+}
+
+const MujLogo: React.FC<{ height?: number }> = ({ height = 52 }) => {
+  const ok = useLogo('/assets/muj-logo-transparent.png');
+  if (ok) {
+    return (
+      <img
+        src="/assets/muj-logo-transparent.png"
+        alt="Manipal University Jaipur"
+        style={{ height, width: 'auto', objectFit: 'contain', display: 'block' }}
+      />
+    );
+  }
+  return (
+    <div
+      className="portal-logo-placeholder"
+      style={{ height }}
+      aria-label="Manipal University Jaipur"
+    >
+      MUJ
+    </div>
+  );
+};
+
+const EcellLogo: React.FC<{ height?: number }> = ({ height = 52 }) => {
+  const ok = useLogo('/assets/muj-ecell-logo.png');
+  if (ok) {
+    return (
+      <img
+        src="/assets/muj-ecell-logo.png"
+        alt="MUJ E-Cell"
+        style={{ height, width: 'auto', objectFit: 'contain', display: 'block' }}
+      />
+    );
+  }
+  return (
+    <div
+      className="portal-logo-placeholder"
+      style={{ height }}
+      aria-label="MUJ E-Cell"
+    >
+      E-CELL
+    </div>
+  );
+};
+
+/* --- Admin / Super Admin layout ------------------------------------------ */
 
 export const RootLayout: React.FC = () => {
-  const { currentUser, signOut, switchUserRoleForTesting } = useAuth();
+  const { currentUser, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState(false);
 
   const handleSignOut = async () => {
     await signOut();
-    navigate('/auth/login');
+    navigate('/login');
   };
 
+  const todayLabel = new Date().toLocaleDateString('en-IN', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  const roleLabel =
+    currentUser?.role === 'super_admin'
+      ? 'Super Administrator'
+      : currentUser?.role === 'admin'
+      ? 'Administrator'
+      : 'Student Applicant';
+
   return (
-    <div className="app-container">
-      {/* Top Institutional Notification Banner */}
-      <div
-        style={{
-          backgroundColor: '#0f172a',
-          color: '#cbd5e1',
-          fontSize: '0.8125rem',
-          padding: '6px 0',
-          borderBottom: '1px solid #1e293b',
-        }}
-      >
-        <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>
-            Directorate of Research and Innovation, Manipal University Jaipur | Internal IPR Screening Portal
-          </span>
-          {currentUser && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={{ color: '#94a3b8' }}>Test Persona:</span>
-              <button
-                type="button"
-                onClick={() => switchUserRoleForTesting('student')}
-                style={{
-                  background: currentUser.role === 'student' ? '#0284c7' : 'transparent',
-                  color: '#ffffff',
-                  border: '1px solid #334155',
-                  padding: '2px 8px',
-                  borderRadius: '3px',
-                  fontSize: '0.75rem',
-                  cursor: 'pointer',
-                }}
-              >
-                Student View
-              </button>
-              <button
-                type="button"
-                onClick={() => switchUserRoleForTesting('admin')}
-                style={{
-                  background: currentUser.role === 'admin' ? '#0f766e' : 'transparent',
-                  color: '#ffffff',
-                  border: '1px solid #334155',
-                  padding: '2px 8px',
-                  borderRadius: '3px',
-                  fontSize: '0.75rem',
-                  cursor: 'pointer',
-                }}
-              >
-                Admin (Patent Cell)
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
+    <div className="portal portal-admin">
+      {/* Header */}
+      <header className="portal-header" role="banner">
+        <div className="portal-header-inner">
+          <Link
+            to="/"
+            className="portal-logo-group"
+            aria-label="MUJ Patent Portal home"
+            style={{ textDecoration: 'none' }}
+          >
+            <MujLogo height={52} />
+            <span className="portal-logo-divider" aria-hidden="true" />
+            <EcellLogo height={52} />
+          </Link>
 
-      {/* Main Header */}
-      <header className="site-header">
-        <div className="container">
-          <div className="header-inner">
-            <Link to="/" className="brand-wrapper">
-              <div className="brand-mark">
-                <FileText size={20} />
-              </div>
-              <div className="brand-text-block">
-                <span className="brand-title">MUJ Patent Application Portal</span>
-                <span className="brand-subtitle">Manipal University Jaipur</span>
-              </div>
-            </Link>
-
-            <nav className="nav-links">
-              <Link
-                to="/"
-                className={`nav-item ${location.pathname === '/' || location.pathname === '/workspace' ? 'active' : ''}`}
-              >
-                Patent Workspace
-              </Link>
-              {currentUser && (
-                <>
-                  {currentUser.role === 'admin' ? (
-                    <Link
-                      to="/admin/dashboard"
-                      className={`nav-item ${location.pathname.startsWith('/admin') ? 'active' : ''}`}
-                    >
-                      Admin Dashboard
-                    </Link>
-                  ) : (
-                    <>
-                      <Link
-                        to="/dashboard"
-                        className={`nav-item ${location.pathname === '/dashboard' ? 'active' : ''}`}
-                      >
-                        My Applications
-                      </Link>
-                      <Link
-                        to="/applications/new"
-                        className={`nav-item ${location.pathname === '/applications/new' ? 'active' : ''}`}
-                      >
-                        New Application
-                      </Link>
-                    </>
-                  )}
-                </>
-              )}
-            </nav>
-
-            <div className="nav-user-actions">
-              {currentUser ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.875rem' }}>
-                    {currentUser.role === 'admin' ? (
-                      <Shield size={16} color="var(--accent-teal)" />
-                    ) : (
-                      <User size={16} color="var(--accent-primary)" />
-                    )}
-                    <div>
-                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.2 }}>
-                        {currentUser.full_name}
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        {currentUser.role === 'admin' ? 'Patent Coordinator' : 'Student Applicant'}
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSignOut}
-                    className="btn btn-outline btn-sm"
-                    title="Sign Out of Portal"
-                  >
-                    <LogOut size={14} />
-                    Sign Out
-                  </button>
+          <div className="portal-user-chip">
+            {currentUser ? (
+              <>
+                <div className="portal-avatar" aria-hidden="true">
+                  {initials(currentUser.full_name || 'U')}
                 </div>
-              ) : (
-                <Link to="/auth/login" className="btn btn-primary btn-sm">
-                  Sign In
-                </Link>
-              )}
-            </div>
+                <div>
+                  <div className="portal-user-name">{currentUser.full_name}</div>
+                  <div className="portal-user-role">{roleLabel}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsGuidelinesOpen(true)}
+                  aria-label="IPR guidelines and help"
+                  title="IPR & Patent Filing Rules"
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#64748b',
+                    display: 'flex',
+                    padding: '6px',
+                    borderRadius: '4px',
+                    transition: 'color 0.15s',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = '#0F172A')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = '#64748b')}
+                >
+                  <Settings size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="btn btn-outline btn-sm"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    fontSize: '0.8125rem',
+                    color: '#ef4444',
+                    borderColor: 'rgba(239,68,68,0.35)',
+                  }}
+                  title="Sign out"
+                >
+                  <LogOut size={14} />
+                  <span>Sign Out</span>
+                </button>
+              </>
+            ) : (
+              <Link
+                to="/login"
+                className="btn btn-sm"
+                style={{
+                  backgroundColor: 'var(--portal-subnav)',
+                  color: '#fff',
+                  borderColor: 'var(--portal-subnav)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                }}
+              >
+                Sign In <ChevronRight size={14} />
+              </Link>
+            )}
           </div>
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="main-content">
+      {/* Sub-nav */}
+      <nav className="portal-subnav" aria-label="Portal navigation">
+        <div className="portal-subnav-inner">
+          <ul className="portal-subnav-links" role="list">
+            {currentUser?.role === 'admin' && (
+              <li>
+                <Link
+                  to="/admin/dashboard"
+                  className={
+                    'portal-subnav-link' +
+                    (location.pathname.startsWith('/admin') ? ' active' : '')
+                  }
+                  aria-current={
+                    location.pathname.startsWith('/admin') ? 'page' : undefined
+                  }
+                >
+                  <ShieldCheck size={14} aria-hidden="true" />
+                  Review Docket
+                </Link>
+              </li>
+            )}
+
+            {currentUser?.role === 'super_admin' && (
+              <li>
+                <Link
+                  to="/superadmin/dashboard"
+                  className={
+                    'portal-subnav-link' +
+                    (location.pathname.startsWith('/superadmin') ? ' active' : '')
+                  }
+                  aria-current={
+                    location.pathname.startsWith('/superadmin') ? 'page' : undefined
+                  }
+                >
+                  <Shield size={14} aria-hidden="true" />
+                  Portal Governance
+                </Link>
+              </li>
+            )}
+
+            <li>
+              <button
+                type="button"
+                className="portal-subnav-link"
+                onClick={() => setIsGuidelinesOpen(true)}
+              >
+                <BookOpen size={14} aria-hidden="true" />
+                Help
+              </button>
+            </li>
+          </ul>
+          <span className="portal-subnav-date">{todayLabel}</span>
+        </div>
+      </nav>
+
+      {/* Main content */}
+      <main className="portal-main" id="main-content">
         <Outlet />
       </main>
 
-      {/* Institutional Footer */}
-      <footer className="site-footer">
-        <div className="container">
-          <div className="footer-inner">
-            <div>
-              <p style={{ margin: 0, fontSize: '0.8125rem' }}>
-                &copy; {new Date().getFullYear()} Manipal University Jaipur. Directorate of Research & Innovation.
-              </p>
-              <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Designated Patent Cell: Office of Intellectual Property Rights (IPR).
-              </p>
-            </div>
-            <div className="footer-links">
-              <a
-                href="mailto:patent.admin@muj.manipal.edu"
-                style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}
-              >
-                Patent Cell Contact
-              </a>
-            </div>
-          </div>
+      {/* Statutory Guidelines Modal */}
+      <GuidelinesModal
+        isOpen={isGuidelinesOpen}
+        onClose={() => setIsGuidelinesOpen(false)}
+      />
+
+      {/* Footer */}
+      <footer className="portal-footer" role="contentinfo">
+        <div className="portal-footer-inner">
+          <EcellLogo height={40} />
+          <p className="portal-footer-text" style={{ margin: 0 }}>
+            &copy; {new Date().getFullYear()} {INSTITUTION.NAME}. All rights reserved.
+            Developed by <strong>E-Cell MUJ</strong> in partnership with the{' '}
+            <strong>{INSTITUTION.DEPARTMENTS.IPR_CELL}</strong>.
+          </p>
+          <p className="portal-footer-text" style={{ margin: 0 }}>
+            Patent enquiries:{' '}
+            <a href={`mailto:${COORDINATOR.EMAIL}`} style={{ color: 'var(--portal-blue)' }}>
+              {COORDINATOR.EMAIL}
+            </a>
+          </p>
         </div>
       </footer>
     </div>
   );
 };
+
+export default RootLayout;

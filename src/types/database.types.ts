@@ -1,4 +1,4 @@
-export type AppRole = 'student' | 'admin';
+export type AppRole = 'student' | 'admin' | 'super_admin';
 
 export type ApplicationStatus =
   | 'draft'
@@ -49,12 +49,13 @@ export interface Application {
   submitted_at: string | null;
   created_at: string;
   updated_at: string;
-  // Optional joined fields:
+  // Joined fields:
   profiles?: Profile;
   inventors?: Inventor[];
   application_documents?: ApplicationDocument[];
   correction_requests?: CorrectionRequest[];
   application_status_history?: ApplicationStatusHistory[];
+  application_versions?: ApplicationVersion[];
 }
 
 export interface Inventor {

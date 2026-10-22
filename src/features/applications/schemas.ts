@@ -5,9 +5,7 @@ export const inventorSchema = z.object({
   full_name: z.string().min(2, 'Inventor name must be at least 2 characters'),
   email: z.string().email('Please enter a valid email address'),
   phone: z.string().optional().or(z.literal('')),
-  affiliation_type: z.enum(['student', 'faculty', 'external'], {
-    required_error: 'Please select an affiliation type',
-  }),
+  affiliation_type: z.enum(['student', 'faculty', 'external']),
   department: z.string().min(2, 'Department is required'),
   is_primary: z.boolean().default(false),
   order_index: z.number().default(0),
