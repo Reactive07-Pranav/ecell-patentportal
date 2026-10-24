@@ -5,6 +5,7 @@ import { fetchApplications, fetchNotifications } from "../lib/api";
 import type { Application, InPortalNotification } from "../types/database.types";
 import { getStatusBadgeClass, getStatusDisplayName } from "../features/applications/workflow";
 import { COORDINATOR, INSTITUTION } from "../config/constants";
+import { PortalHero } from "../components/PortalHero";
 import {
   PlusCircle,
   FileText,
@@ -96,33 +97,7 @@ export const StudentDashboard: React.FC = () => {
 
   return (
     <>
-      {/* -- Hero banner --------------------------------------------------- */}
-      <div className="portal-hero" role="region" aria-label="MUJ Patent Portal welcome banner">
-        {/* Right-anchored night campus photo with side-fade mask */}
-        <div className="portal-hero-photo-wrapper" aria-hidden="true">
-          <img
-            src="/assets/muj-campus-night.jpg"
-            alt=""
-            loading="eager"
-            width="600"
-            height="688"
-            className="portal-hero-bg"
-          />
-        </div>
-
-        {/* Dark gradient overlay for WCAG AA text contrast */}
-        <div className="portal-hero-overlay" aria-hidden="true" />
-
-        {/* Hero content aligned with page container cards */}
-        <div className="portal-hero-content">
-          <h1 className="portal-hero-text">
-            Welcome {currentUser?.full_name} to the MUJ Patent Portal
-          </h1>
-          <p className="portal-hero-sub">
-            {INSTITUTION.NAME} &bull; {INSTITUTION.DEPARTMENTS.IPR_CELL}
-          </p>
-        </div>
-      </div>
+      <PortalHero heading={`Welcome ${currentUser?.full_name} to the MUJ Patent Portal`} subtitle={`${INSTITUTION.NAME} • ${INSTITUTION.DEPARTMENTS.IPR_CELL}`} />
 
       {/* -- Page body ----------------------------------------------------- */}
       <div className="portal-container" style={{ paddingTop: "24px" }}>

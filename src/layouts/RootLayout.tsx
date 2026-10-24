@@ -4,7 +4,6 @@ import { useAuth } from '../features/auth/AuthContext';
 import {
   LogOut,
   Settings,
-  BookOpen,
   ChevronRight,
   ShieldCheck,
   Shield,
@@ -229,17 +228,7 @@ export const RootLayout: React.FC = () => {
               </li>
             )}
 
-            <li>
-              <button
-                type="button"
-                className="portal-subnav-link"
-                onClick={() => setIsGuidelinesOpen(true)}
-              >
-                <BookOpen size={14} aria-hidden="true" />
-                Help
-              </button>
-            </li>
-          </ul>
+</ul>
           <span className="portal-subnav-date">{todayLabel}</span>
         </div>
       </nav>

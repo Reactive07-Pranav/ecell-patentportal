@@ -96,7 +96,8 @@ export const PortalLayout: React.FC = () => {
     navigate("/login");
   };
 
-  const isActive = (path: string) => location.pathname === path;
+  const isLogin = location.pathname === "/login";
+const isActive = (path: string) => location.pathname === path;
 
   const todayLabel = new Date().toLocaleDateString("en-IN", {
     weekday: "long",
@@ -106,8 +107,9 @@ export const PortalLayout: React.FC = () => {
   });
 
   return (
-    <div className="portal">
+<div className="portal" style={isLogin ? { backgroundColor: "transparent", minHeight: "100vh", display: "flex", flexDirection: "column" } : undefined}>
       {/* Header */}
+      {!isLogin && (
       <header className="portal-header" role="banner">
         <div className="portal-header-inner">
           <Link
@@ -187,9 +189,11 @@ export const PortalLayout: React.FC = () => {
             )}
           </div>
         </div>
-      </header>
+</header>
+      )}
 
-      {/* Sub-nav */}
+{/* Sub-nav */}
+      {!isLogin && (
       <nav className="portal-subnav" aria-label="Portal navigation">
         <div className="portal-subnav-inner">
           <ul className="portal-subnav-links" role="list">
@@ -240,10 +244,11 @@ export const PortalLayout: React.FC = () => {
           </ul>
           <span className="portal-subnav-date">{todayLabel}</span>
         </div>
-      </nav>
+</nav>
+      )}
 
       {/* Main content */}
-      <main className="portal-main" id="main-content">
+      <main className="portal-main" id="main-content" style={isLogin ? { flex: 1, display: "flex", flexDirection: "column" } : undefined}>
         <Outlet />
       </main>
 
