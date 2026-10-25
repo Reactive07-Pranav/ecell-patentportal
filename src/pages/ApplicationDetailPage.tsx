@@ -213,9 +213,9 @@ export const ApplicationDetailPage: React.FC = () => {
       )}
 
       {/* Main Grid: Details + Documents + History */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
+      <div className="detail-layout-grid">
         {/* Left Column: Full Technical Disclosure */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', minWidth: 0 }}>
           {/* Invention Overview */}
           <div className="card">
             <div className="card-header">
@@ -226,7 +226,7 @@ export const ApplicationDetailPage: React.FC = () => {
                 <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                   Invention Title
                 </span>
-                <h2 style={{ fontSize: '1.25rem', marginTop: '4px', color: 'var(--text-primary)' }}>
+                <h2 style={{ fontSize: '1.25rem', marginTop: '4px', color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
                   {application.title}
                 </h2>
               </div>
@@ -235,35 +235,35 @@ export const ApplicationDetailPage: React.FC = () => {
                 <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                   Technical Domain
                 </span>
-                <p style={{ marginTop: '4px' }}>{application.technical_field}</p>
+                <p style={{ marginTop: '4px', overflowWrap: 'anywhere' }}>{application.technical_field}</p>
               </div>
 
               <div style={{ marginBottom: '20px' }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                   Problem Statement & Prior Art Limitations
                 </span>
-                <p style={{ marginTop: '4px', whiteSpace: 'pre-wrap' }}>{application.background_problem}</p>
+                <p style={{ marginTop: '4px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{application.background_problem}</p>
               </div>
 
               <div style={{ marginBottom: '20px' }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                   Detailed Description of Invention
                 </span>
-                <p style={{ marginTop: '4px', whiteSpace: 'pre-wrap' }}>{application.description}</p>
+                <p style={{ marginTop: '4px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{application.description}</p>
               </div>
 
               <div style={{ marginBottom: '20px' }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                   Distinguishing Novel Features
                 </span>
-                <p style={{ marginTop: '4px', whiteSpace: 'pre-wrap' }}>{application.novelty_features}</p>
+                <p style={{ marginTop: '4px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{application.novelty_features}</p>
               </div>
 
               <div>
                 <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                   Proposed Industrial Applications & Utility
                 </span>
-                <p style={{ marginTop: '4px', whiteSpace: 'pre-wrap' }}>{application.practical_applications}</p>
+                <p style={{ marginTop: '4px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{application.practical_applications}</p>
               </div>
             </div>
           </div>
@@ -344,7 +344,7 @@ export const ApplicationDetailPage: React.FC = () => {
                         <strong>{comm.author?.full_name || 'Coordinator'}</strong>
                         <span>{new Date(comm.created_at).toLocaleString('en-IN')}</span>
                       </div>
-                      <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-primary)' }}>{comm.content}</p>
+                      <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{comm.content}</p>
                     </div>
                   ))}
                 </div>
@@ -371,7 +371,7 @@ export const ApplicationDetailPage: React.FC = () => {
         </div>
 
         {/* Right Column: Private Documents + Audit History */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', minWidth: 0 }}>
           {/* Documents Card */}
           <div className="card">
             <div className="card-header">
@@ -395,6 +395,7 @@ export const ApplicationDetailPage: React.FC = () => {
                     >
                       <div style={{ minWidth: 0, flex: 1, paddingRight: '8px' }}>
                         <div
+                          title={doc.original_filename}
                           style={{
                             fontWeight: 600,
                             fontSize: '0.8125rem',
@@ -405,7 +406,7 @@ export const ApplicationDetailPage: React.FC = () => {
                         >
                           {doc.original_filename}
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>
                           {doc.document_category} | {(doc.file_size_bytes / (1024 * 1024)).toFixed(2)} MB
                         </div>
                       </div>
@@ -413,6 +414,7 @@ export const ApplicationDetailPage: React.FC = () => {
                         type="button"
                         onClick={() => handleDownloadDocument(doc.storage_path, doc.original_filename)}
                         className="btn btn-outline btn-sm"
+                        style={{ flexShrink: 0 }}
                         title="Download Document"
                       >
                         <Download size={14} />
@@ -446,7 +448,7 @@ export const ApplicationDetailPage: React.FC = () => {
                       <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                         Status: {getStatusDisplayName(hist.to_status)}
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '2px 0' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '2px 0', overflowWrap: 'anywhere' }}>
                         {hist.reason || 'Transition recorded.'}
                       </div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>

@@ -179,7 +179,7 @@ export const CorrectionPage: React.FC = () => {
           style={{ marginBottom: '24px' }}
         >
           {feedbackMessage.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
-          <div>{feedbackMessage.text}</div>
+          <div style={{ overflowWrap: 'anywhere' }}>{feedbackMessage.text}</div>
         </div>
       )}
 
@@ -223,7 +223,7 @@ export const CorrectionPage: React.FC = () => {
                     {new Date(corr.created_at).toLocaleDateString('en-IN')}
                   </span>
                 </div>
-                <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-primary)' }}>
+                <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
                   "{corr.comment}"
                 </p>
               </div>

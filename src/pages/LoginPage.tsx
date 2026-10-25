@@ -15,7 +15,6 @@ import {
   Lock,
 } from 'lucide-react';
 import { COORDINATOR } from '../config/constants';
-import mujBuildingBg from '../assets/muj-building.png';
 import mujLogo from '../assets/muj-logo.png';
 
 type LoginStep = 'role-select' | 'auth-form';
@@ -60,7 +59,7 @@ export const LoginPage: React.FC = () => {
     }
   }, [currentUser, navigate, location]);
 
-  const pick = (r: 'student' | 'admin') => { setRole(r); setStep('auth-form'); setErr(null); setOk(null); };
+  const pick = (r: 'student' | 'admin') => { setRole(r); setStep('auth-form'); setErr(null); setOk(null); if (r === 'admin') setTab('signin'); };
   const back = () => { setStep('role-select'); setRole(null); setErr(null); setOk(null); setTab('signin'); };
 
   const onSignIn = async (e: React.FormEvent) => {
@@ -80,6 +79,7 @@ export const LoginPage: React.FC = () => {
 
   const onRegister = async (e: React.FormEvent) => {
     e.preventDefault(); setErr(null); setOk(null);
+    if (role !== 'student') return;
     if (regPwd !== regPwd2) { setErr('Passwords do not match.'); return; }
     if (regPwd.length < 6) { setErr('Password must be at least 6 characters.'); return; }
     const email = fullEmail(regUser);
@@ -101,24 +101,27 @@ export const LoginPage: React.FC = () => {
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet" />
 
       <div style={S.page}>
-        <div style={{ ...S.bg, backgroundImage: `url(${mujBuildingBg})` }} />
+        <div style={{ ...S.bg, backgroundImage: `url('/assets/login-bg-night.png')` }} />
         <div style={S.overlay} />
 
-        <div style={{ ...S.cardWrap, maxWidth: step === 'role-select' ? 440 : 480 }}>
+        <div style={{ ...S.cardWrap, maxWidth: 600, margin: '0 auto' }} className="login-card-wrap">
 
           {step === 'role-select' ? (
             /* ═════════ STEP 1 — CHOOSE ROLE ═════════ */
-            <div style={S.card} key="s1">
+            <div style={S.card} key="s1" className="login-card">
               <div style={S.accent} />
-              <div style={{ padding: '50px 44px 46px' }}>
 
                 <p style={S.welcomeLabel}>WELCOME TO</p>
-                <img src={mujLogo} alt="Manipal University Jaipur" style={{ display: 'block', margin: '0 auto 24px', maxWidth: 320, width: '100%', height: 'auto' }} />
+                <div className="login-logos" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, margin: '0 0 8px' }}>
+                  <img src={mujLogo} alt="Manipal University Jaipur" style={{ height: 'auto', maxHeight: 56, width: 'auto', objectFit: 'contain' }} />
+                  <div style={{ width: 1, height: 40, backgroundColor: '#e0e0e0' }} />
+                  <img src="/assets/muj-ecell-logo.png" alt="MUJ E-Cell" style={{ height: 'auto', maxHeight: 56, width: 'auto', objectFit: 'contain' }} />
+                </div>
 
-                <p style={S.portalLabel}>E-Cell Patent Portal</p>
-                <p style={S.subtext}>Choose how you'd like to sign in</p>
+                <p style={{ ...S.portalLabel, marginBottom: 8 }}>E-Cell Patent Portal</p>
+                <p style={{ ...S.subtext, marginBottom: 20 }}>Choose how you'd like to sign in</p>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 28 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 8 }}>
                   <button type="button" onClick={() => pick('admin')} style={S.blueBtn}
                     onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#1a5cb5'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
                     onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#2074d4'; e.currentTarget.style.transform = 'none'; }}>
@@ -128,18 +131,16 @@ export const LoginPage: React.FC = () => {
                   <button type="button" onClick={() => pick('student')} style={S.blueBtn}
                     onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#1a5cb5'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
                     onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#2074d4'; e.currentTarget.style.transform = 'none'; }}>
-                    Sign in as MUJ Student
+Sign in as MUJ Student
                     <ArrowRight size={16} style={{ opacity: .7 }} />
                   </button>
                 </div>
               </div>
-            </div>
 
-          ) : (
+           ) : (
             /* ═════════ STEP 2 — AUTH FORM ═════════ */
-            <div style={S.card} key="s2">
+            <div style={S.card} key="s2" className="login-card">
               <div style={S.accent} />
-              <div style={{ padding: '28px 44px 40px' }}>
 
                 {/* back */}
                 <button type="button" onClick={back} style={S.backBtn}
@@ -150,14 +151,18 @@ export const LoginPage: React.FC = () => {
 
                 {/* header */}
                 <p style={{ ...S.welcomeLabel, fontSize: 11, marginBottom: 2 }}>WELCOME TO</p>
-                <img src={mujLogo} alt="Manipal University Jaipur" style={{ display: 'block', margin: '0 auto 14px', maxWidth: 260, width: '100%', height: 'auto' }} />
+                <div className="login-logos" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, margin: '0 0 8px' }}>
+                  <img src={mujLogo} alt="Manipal University Jaipur" style={{ height: 'auto', maxHeight: 56, width: 'auto', objectFit: 'contain' }} />
+                  <div style={{ width: 1, height: 40, backgroundColor: '#e0e0e0' }} />
+                  <img src="/assets/muj-ecell-logo.png" alt="MUJ E-Cell" style={{ height: 'auto', maxHeight: 56, width: 'auto', objectFit: 'contain' }} />
+                </div>
                 <p style={{ ...S.portalLabel, fontSize: 12, marginBottom: 2 }}>E-Cell Patent Portal</p>
 
-                <h2 style={S.formTitle}>{tab === 'signin' ? 'Sign In' : 'Create Account'}</h2>
-                <p style={S.roleChip}>{role === 'admin' ? 'Faculty / Admin' : 'Student'}</p>
+                <h2 style={{ ...S.formTitle, marginBottom: 4 }}>{tab === 'signin' ? 'Sign In' : 'Create Account'}</h2>
+                <p style={{ ...S.roleChip, marginBottom: 16 }}>{role === 'admin' ? 'Faculty / Admin' : 'Student'}</p>
 
-                {/* tabs */}
-                <div style={S.tabRow}>
+{role === 'student' && (
+                <div style={{ ...S.tabRow, height: 44, marginBottom: 16 }}>
                   {(['signin', 'register'] as const).map(t => (
                     <button key={t} type="button"
                       onClick={() => { setTab(t); setErr(null); setOk(null); }}
@@ -166,6 +171,7 @@ export const LoginPage: React.FC = () => {
                     </button>
                   ))}
                 </div>
+                )}
 
                 {/* alerts */}
                 {err && <div style={S.alertErr}><AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} /><span>{err}</span></div>}
@@ -174,26 +180,26 @@ export const LoginPage: React.FC = () => {
                 {tab === 'signin' ? (
                   <form onSubmit={onSignIn}>
                     {/* username */}
-                    <div style={{ marginBottom: 16 }}>
+                    <div style={{ marginBottom: 14 }}>
                       <label style={S.label}>Username</label>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <input type="text" placeholder="e.g. parth.26020*****" value={username}
+                        <input type="text" placeholder="e.g. aryaman.26020*****" value={username}
                           onChange={e => setUsername(e.target.value)} required autoFocus autoComplete="username"
                           style={{ ...S.input, flex: '1 1 0', minWidth: 0 }} onFocus={onF} onBlur={onB} />
                         <span style={S.domainTag}>@muj.manipal.edu</span>
                       </div>
                     </div>
 
-                    {/* password */}
-                    <div style={{ marginBottom: 26, position: 'relative' }}>
+                    <div style={{ marginBottom: 14 }}>
                       <label style={S.label}>Password</label>
-                      <input type={showPwd ? 'text' : 'password'} placeholder="Enter your password"
-                        value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"
-                        style={{ ...S.input, paddingRight: 44 }} onFocus={onF} onBlur={onB} />
-                      <button type="button" tabIndex={-1} onClick={() => setShowPwd(p => !p)}
-                        style={S.eyeBtn}>
-                        {showPwd ? <EyeOff size={17} /> : <Eye size={17} />}
-                      </button>
+                      <div className="password-field">
+                        <input type={showPwd ? 'text' : 'password'} placeholder="Enter your password"
+                          value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"
+                          className="password-input" onFocus={onF} onBlur={onB} />
+                        <button type="button" tabIndex={-1} className="password-toggle" aria-label={showPwd ? 'Hide password' : 'Show password'} onClick={() => setShowPwd(p => !p)}>
+                          {showPwd ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
@@ -222,16 +228,24 @@ export const LoginPage: React.FC = () => {
                       </div>
                     </div>
 
-                    <div style={{ marginBottom: 14 }}>
-                      <label style={S.label}>Full Name <span style={S.req}>*</span></label>
-                      <div style={{ position: 'relative' }}>
-                        <span style={S.ico}><User size={15} /></span>
-                        <input type="text" placeholder="e.g. Parth Betai" value={regName} onChange={e => setRegName(e.target.value)} required
-                          style={S.inputIco} onFocus={onF} onBlur={onB} />
+                    <div className="login-row-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                      <div>
+                        <label style={S.label}>Full Name <span style={S.req}>*</span></label>
+                        <div style={{ position: 'relative' }}>
+                          <span style={S.ico}><User size={15} /></span>
+                          <input type="text" placeholder="e.g. Aryaman Sharma" value={regName} onChange={e => setRegName(e.target.value)} required
+                            style={S.inputIco} onFocus={onF} onBlur={onB} />
+                        </div>
+                      </div>
+                      <div>
+                        <label style={S.label}>Phone</label>
+                        <div style={{ position: 'relative' }}><span style={S.ico}><Phone size={15} /></span>
+                          <input type="tel" placeholder="98********" value={regPhone} onChange={e => setRegPhone(e.target.value)} style={S.inputIco} onFocus={onF} onBlur={onB} />
+                        </div>
                       </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
                       <div>
                         <label style={S.label}>Department</label>
                         <div style={{ position: 'relative' }}><span style={S.ico}><Building size={15} /></span>
@@ -246,14 +260,7 @@ export const LoginPage: React.FC = () => {
                       </div>
                     </div>
 
-                    <div style={{ marginBottom: 14 }}>
-                      <label style={S.label}>Phone</label>
-                      <div style={{ position: 'relative' }}><span style={S.ico}><Phone size={15} /></span>
-                        <input type="tel" placeholder="98********" value={regPhone} onChange={e => setRegPhone(e.target.value)} style={S.inputIco} onFocus={onF} onBlur={onB} />
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
                       <div>
                         <label style={S.label}>Password <span style={S.req}>*</span></label>
                         <div style={{ position: 'relative' }}><span style={S.ico}><Lock size={15} /></span>
@@ -269,18 +276,17 @@ export const LoginPage: React.FC = () => {
                     </div>
 
                     <button type="submit" disabled={busy}
-                      style={{ ...S.orangeBtn, width: '100%', justifyContent: 'center', padding: '13px 20px', fontSize: 15, opacity: busy ? .6 : 1, cursor: busy ? 'not-allowed' : 'pointer' }}
+                      style={{ ...S.orangeBtn, width: '100%', justifyContent: 'center', opacity: busy ? .6 : 1, cursor: busy ? 'not-allowed' : 'pointer' }}
                       onMouseEnter={e => { if (!busy) e.currentTarget.style.backgroundColor = '#b94600'; }}
                       onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#d35400'; }}>
                       {busy ? 'Registering…' : 'Complete Registration'} <ArrowRight size={15} />
                     </button>
                   </form>
                 )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+                </div>
+           )}
+         </div>
+       </div>
 
       {/* Forgot Password Dialog */}
       {showForgot && (
@@ -289,16 +295,19 @@ export const LoginPage: React.FC = () => {
           <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,.5)' }} />
           <div style={{ ...S.card, position: 'relative', maxWidth: 420, width: '90%', animation: 'cardIn .35s ease both' }}
             onClick={e => e.stopPropagation()}>
-            <div style={S.accent} />
-            <div style={{ padding: '36px 40px 32px' }}>
-              <img src={mujLogo} alt="Manipal University Jaipur" style={{ display: 'block', margin: '0 auto 20px', maxWidth: 220, width: '100%', height: 'auto' }} />
-              <h3 style={{ textAlign: 'center', fontSize: 20, fontWeight: 700, color: '#d35400', margin: '0 0 14px', fontFamily: dm }}>
+              <div style={S.accent} />
+              <div className="login-logos" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, margin: '0 0 8px' }}>
+                  <img src={mujLogo} alt="Manipal University Jaipur" style={{ height: 'auto', maxHeight: 56, width: 'auto', objectFit: 'contain' }} />
+                  <div style={{ width: 1, height: 40, backgroundColor: '#e0e0e0' }} />
+                  <img src="/assets/muj-ecell-logo.png" alt="MUJ E-Cell" style={{ height: 'auto', maxHeight: 56, width: 'auto', objectFit: 'contain' }} />
+                </div>
+              <h3 style={{ textAlign: 'center', fontSize: 20, fontWeight: 700, color: '#d35400', margin: '0 0 8px', fontFamily: dm }}>
                 Forgot Password?
               </h3>
-              <p style={{ textAlign: 'center', fontSize: 14, color: '#555', lineHeight: 1.7, margin: '0 0 10px', fontFamily: dm }}>
+              <p style={{ textAlign: 'center', fontSize: 14, color: '#555', lineHeight: 1.7, margin: '0 0 8px', fontFamily: dm }}>
                 Please contact the <strong>E-Cell MUJ Admin</strong> or your department coordinator to reset your portal password.
               </p>
-              <p style={{ textAlign: 'center', fontSize: 13, color: '#888', lineHeight: 1.6, margin: '0 0 24px', fontFamily: dm }}>
+              <p style={{ textAlign: 'center', fontSize: 13, color: '#888', lineHeight: 1.6, margin: '0 0 16px', fontFamily: dm }}>
                 You can reach out via email at<br />
                 <a href="mailto:ecell@muj.manipal.edu" style={{ color: '#d35400', fontWeight: 600, textDecoration: 'none' }}>ecell@muj.manipal.edu</a>
               </p>
@@ -311,12 +320,22 @@ export const LoginPage: React.FC = () => {
                 </button>
               </div>
             </div>
-          </div>
         </div>
       )}
 
       <style>{`
         @keyframes cardIn { from { opacity:0; transform:translateY(14px) } to { opacity:1; transform:translateY(0) } }
+        .password-field { display: flex; align-items: center; height: 44px; border: 1px solid #d5d5d5; border-radius: 8px; background: #fafafa; padding: 0 12px; }
+        .password-field:focus-within { border-color: #d35400; box-shadow: 0 0 0 3px rgba(211,84,0,.08); }
+        .password-input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; padding: 0; font-size: 15px; font-family: inherit; color: #222; }
+        .password-toggle { flex: none; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; background: none; border: 0; cursor: pointer; margin-right: -6px; color: #bbb; }
+        @media (max-width: 400px) {
+          .login-logos img { max-height: 44px !important; }
+        }
+          .login-card { padding: 20px 16px !important; }
+          .login-card-wrap { margin: 16px !important; }
+          .login-row-2 { grid-template-columns: 1fr !important; }
+        }
       `}</style>
     </>
   );
@@ -329,11 +348,12 @@ const dm = "'DM Sans', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sa
 const pf = "'Playfair Display', Georgia, 'Times New Roman', serif";
 
 const S: Record<string, React.CSSProperties> = {
-  page: { position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: dm, overflow: 'auto' },
-  bg: { position: 'absolute', inset: 0, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' },
-  overlay: { position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,.38) 0%, rgba(0,0,0,.52) 100%)', backdropFilter: 'blur(1.5px)' },
-  cardWrap: { position: 'relative', zIndex: 1, width: '100%', margin: '24px 16px', transition: 'max-width .3s' },
-  card: { backgroundColor: '#fff', borderRadius: 16, boxShadow: '0 24px 64px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.08)', overflow: 'hidden', animation: 'cardIn .5s ease both' },
+  page: { position: 'relative', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: dm, overflow: 'auto', padding: '24px 16px' },
+bg: { position: 'fixed', inset: 0, backgroundSize: 'cover', backgroundPosition: 'center 40%', backgroundRepeat: 'no-repeat', zIndex: 0, filter: 'blur(3px)', transform: 'scale(1.05)' },
+  overlay: { position: 'fixed', inset: 0, background: 'linear-gradient(135deg, rgba(11,30,68,0.78) 0%, rgba(20,60,120,0.55) 100%)', zIndex: 1 },
+  cardWrap: { position: 'relative', zIndex: 2, width: '100%', margin: '0 auto', transition: 'max-width .3s', maxWidth: 600 },
+  card: { backgroundColor: '#fff', borderRadius: 16, boxShadow: '0 24px 64px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.08)', overflow: 'hidden', animation: 'cardIn .5s ease both', width: '100%', boxSizing: 'border-box' as const, padding: '28px 32px', position: 'relative', zIndex: 2 },
+  cardPadSm: { padding: '20px 16px' },
   accent: { height: 0, display: 'none' },
 
   welcomeLabel: { textAlign: 'center', fontSize: 13, fontWeight: 500, color: '#d35400', textTransform: 'uppercase', letterSpacing: 2, margin: '0 0 6px', fontFamily: dm, fontStyle: 'normal' },
@@ -355,8 +375,8 @@ const S: Record<string, React.CSSProperties> = {
 
   backBtn: { display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#b0b0b0', fontSize: 13, cursor: 'pointer', padding: 0, marginBottom: 16, fontFamily: dm, transition: 'color .15s', fontWeight: 500 },
 
-  formTitle: { textAlign: 'center', color: '#d35400', fontSize: 26, fontWeight: 700, margin: '14px 0 4px', fontFamily: dm },
-  roleChip: { textAlign: 'center', fontSize: 12, color: '#bbb', margin: '0 0 22px', fontFamily: dm, fontWeight: 500, letterSpacing: .5 },
+  formTitle: { textAlign: 'center', color: '#d35400', fontSize: 28, fontWeight: 700, margin: '8px 0 4px', fontFamily: dm },
+  roleChip: { textAlign: 'center', fontSize: 12, color: '#bbb', margin: '0 0 8px', fontFamily: dm, fontWeight: 500, letterSpacing: .5 },
 
   tabRow: { display: 'flex', marginBottom: 22, borderRadius: 8, overflow: 'hidden', border: '1px solid #e8e8e8' },
   tabBtn: { flex: 1, padding: '10px 0', border: 'none', fontWeight: 600, fontSize: 13.5, cursor: 'pointer', fontFamily: dm, transition: 'all .2s', letterSpacing: .3 },
@@ -366,31 +386,32 @@ const S: Record<string, React.CSSProperties> = {
   alertErr: { display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 14px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, marginBottom: 16, fontSize: 13, color: '#b91c1c', fontFamily: dm },
   alertOk: { display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 14px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, marginBottom: 16, fontSize: 13, color: '#15803d', fontFamily: dm },
 
-  label: { display: 'block', fontSize: 13, fontWeight: 600, color: '#555', marginBottom: 7, fontFamily: dm, letterSpacing: .2 },
+  label: { display: 'block', fontSize: 13, fontWeight: 600, color: '#555', marginBottom: 6, fontFamily: dm, letterSpacing: .2 },
   req: { color: '#e74c3c' },
 
   input: {
     width: '100%', padding: '12px 14px', border: '1px solid #d5d5d5', borderRadius: 8,
-    fontSize: 14.5, fontFamily: dm, color: '#222', background: '#fafafa',
+    fontSize: 15, height: 44, fontFamily: dm, color: '#222', background: '#fafafa',
     outline: 'none', boxSizing: 'border-box' as const, transition: 'border-color .2s, box-shadow .2s, background .2s',
   },
   inputIco: {
     width: '100%', padding: '12px 14px 12px 40px', border: '1px solid #d5d5d5', borderRadius: 8,
-    fontSize: 14.5, fontFamily: dm, color: '#222', background: '#fafafa',
+    fontSize: 15, height: 44, fontFamily: dm, color: '#222', background: '#fafafa',
     outline: 'none', boxSizing: 'border-box' as const, transition: 'border-color .2s, box-shadow .2s',
   },
   ico: { position: 'absolute' as const, left: 13, top: '50%', transform: 'translateY(-50%)', color: '#bbb', display: 'flex' },
 
-  domainTag: { fontSize: 14, fontWeight: 600, color: '#333', whiteSpace: 'nowrap' as const, flexShrink: 0, fontFamily: dm },
+  domainTag: { fontSize: 14, fontWeight: 600, color: '#333', whiteSpace: 'nowrap' as const, flexShrink: 0, fontFamily: dm, display: 'flex', alignItems: 'center', height: 44 },
 
-  eyeBtn: { position: 'absolute' as const, right: 13, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#bbb', padding: 0, display: 'flex' },
+  eyeBtn: { position: 'absolute' as const, right: 12, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, background: 'none', border: 'none', cursor: 'pointer', color: '#bbb', padding: 0 },
 
   orangeBtn: {
-    display: 'inline-flex', alignItems: 'center', gap: 7,
-    padding: '12px 32px', backgroundColor: '#d35400', color: '#fff', border: 'none',
-    borderRadius: 10, fontSize: 14.5, fontWeight: 600, fontFamily: dm, letterSpacing: .3,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+    padding: '0 32px', height: 48, backgroundColor: '#d35400', color: '#fff', border: 'none',
+    borderRadius: 10, fontSize: 15, fontWeight: 600, fontFamily: dm, letterSpacing: .3,
     cursor: 'pointer', transition: 'background .2s, box-shadow .2s, transform .15s',
     boxShadow: '0 4px 14px rgba(211,84,0,.25)',
+    boxSizing: 'border-box' as const,
   },
 
   forgotBtn: { background: 'none', border: 'none', color: '#999', fontSize: 13, cursor: 'pointer', padding: 0, fontFamily: dm, fontWeight: 500, transition: 'color .15s' },
