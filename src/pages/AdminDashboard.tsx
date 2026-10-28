@@ -17,7 +17,6 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { COORDINATOR, INSTITUTION } from '../config/constants';
-import { PortalHero } from '../components/PortalHero';
 
 export const AdminDashboard: React.FC = () => {
   const { currentUser } = useAuth();
@@ -117,12 +116,11 @@ export const AdminDashboard: React.FC = () => {
         <div className="spinner" style={{ margin: '0 auto 16px' }} />
         <p style={{ color: 'var(--text-muted)' }}>Loading {COORDINATOR.FULL_NAME} patent screening registry...</p>
       </div>
-  );
+    );
   }
 
   return (
-    <div className="container" style={{ padding: '0 0 48px' }}>
-      <PortalHero heading={`Welcome ${currentUser?.full_name} to the MUJ Patent Portal`} subtitle="Administrator Console" className="portal-hero--bleed" />
+    <div className="container" style={{ padding: '28px 0 48px' }}>
       {/* Coordinator Header */}
       <div style={{ marginBottom: '28px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
@@ -162,7 +160,7 @@ export const AdminDashboard: React.FC = () => {
 
       {/* KPI Overview Metric Cards */}
       <div
-        className="admin-stats-grid" style={{
+        style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
           gap: '16px',
@@ -260,8 +258,9 @@ export const AdminDashboard: React.FC = () => {
       </div>
 
       {/* Filter and Search Controls */}
-      <div className="card admin-filter-bar" style={{ marginBottom: '20px', borderRadius: '8px' }}>
-          <div className="admin-filter-controls" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+      <div className="card" style={{ marginBottom: '20px', borderRadius: '8px' }}>
+        <div className="card-body" style={{ padding: '16px 20px' }}>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
             {/* Search Input */}
             <div style={{ flex: '1 1 240px', position: 'relative' }}>
               <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
@@ -326,12 +325,13 @@ export const AdminDashboard: React.FC = () => {
                 <option value="updated">Sort: Recently Updated</option>
                 <option value="submitted">Sort: Initial Submission</option>
               </select>
-             </div>
-           </div>
-       </div>
- 
-       {/* Registry Table */}
-      <div className="card admin-table-wrap" style={{ borderRadius: '10px', overflow: 'hidden' }}>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Registry Table */}
+      <div className="card" style={{ borderRadius: '10px', overflow: 'hidden' }}>
         <div className="card-header" style={{ padding: '16px 20px', backgroundColor: 'var(--bg-surface)' }}>
           <h2 className="card-title" style={{ fontSize: '1rem', margin: 0, fontWeight: 700 }}>
             Examination Docket
@@ -355,16 +355,8 @@ export const AdminDashboard: React.FC = () => {
               </p>
             </div>
           ) : (
-            <div className="table-responsive" style={{ overflowX: 'auto' }}>
-              <table className="table" style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 900 }}>
-                <colgroup>
-                  <col style={{ width: '15%' }} />
-                  <col style={{ width: '24%' }} />
-                  <col style={{ width: '19%' }} />
-                  <col style={{ width: '18%' }} />
-                  <col style={{ width: '8%' }} />
-                  <col style={{ width: '16%' }} />
-                </colgroup>
+            <div className="table-responsive">
+              <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border-medium)', backgroundColor: '#f8fafc' }}>
                     <th style={{ padding: '12px 18px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
@@ -376,13 +368,13 @@ export const AdminDashboard: React.FC = () => {
                     <th style={{ padding: '12px 18px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
                       Applicant &amp; Department
                     </th>
-                    <th style={{ padding: '12px 18px', textAlign: 'center', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
+                    <th style={{ padding: '12px 18px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
                       Status
                     </th>
                     <th style={{ padding: '12px 18px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
                       Version
                     </th>
-                    <th style={{ padding: '12px 18px', textAlign: 'center', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
+                    <th style={{ padding: '12px 18px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
                       Action
                     </th>
                   </tr>
@@ -435,10 +427,10 @@ export const AdminDashboard: React.FC = () => {
                         </td>
 
                         <td style={{ padding: '14px 18px', verticalAlign: 'middle', maxWidth: '320px' }}>
-                          <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.875rem', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }} title={app.title}>
+                          <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.875rem', lineHeight: 1.3 }}>
                             {app.title}
                           </div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                             {app.technical_field}
                           </div>
                         </td>
