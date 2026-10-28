@@ -1,3 +1,4 @@
+@import './styles/design-system.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -9,24 +10,24 @@
 
 body {
   margin: 0;
-  background-color: #F8FAFC;
-  color: #0F172A;
+  background-color: #FAF7EE;
+  color: #152E5A;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom scrollbars for data tables and diff viewers */
+/* Custom scrollbars matching warm cream & blue */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #F1F5F9;
+  background: #FAF7EE;
 }
 ::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
-  border-radius: 3px;
+  background: #D8D1C0;
+  border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
+  background: #204E96;
 }

@@ -4,7 +4,6 @@ import { useAuth } from '../features/auth/AuthContext';
 import {
   AlertCircle,
   ArrowRight,
-  ArrowLeft,
   CheckCircle2,
   Eye,
   EyeOff,
@@ -12,24 +11,23 @@ import {
   Building,
   Phone,
   Hash,
-  Lock,
+  Sparkles,
 } from 'lucide-react';
-import { COORDINATOR } from '../config/constants';
-import mujBuildingBg from '../assets/muj-building.png';
+import { COORDINATOR, INSTITUTION } from '../config/constants';
 import mujLogo from '../assets/muj-logo.png';
-
-type LoginStep = 'role-select' | 'auth-form';
+import ecellLogo from '../assets/ecell-logo.png';
 
 const DOMAIN = 'muj.manipal.edu';
-const fullEmail = (u: string) => { const v = u.trim(); return v.includes('@') ? v : `${v}@${DOMAIN}`; };
+const fullEmail = (u: string) => {
+  const v = u.trim();
+  return v.includes('@') ? v : `${v}@${DOMAIN}`;
+};
 
 export const LoginPage: React.FC = () => {
   const { signInWithEmail, registerUniversityAccount, currentUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [step, setStep] = useState<LoginStep>('role-select');
-  const [role, setRole] = useState<'student' | 'admin' | null>(null);
   const [tab, setTab] = useState<'signin' | 'register'>('signin');
   const [showPwd, setShowPwd] = useState(false);
 
@@ -52,348 +50,634 @@ export const LoginPage: React.FC = () => {
   React.useEffect(() => {
     if (currentUser) {
       const from = (location.state as any)?.from?.pathname;
-      const dest = from && from !== '/' && from !== '/login' && from !== '/auth/login'
-        ? from
-        : currentUser.role === 'super_admin' ? '/superadmin/dashboard'
-        : currentUser.role === 'admin' ? '/admin/dashboard' : '/dashboard';
+      const dest =
+        from && from !== '/' && from !== '/login' && from !== '/auth/login'
+          ? from
+          : currentUser.role === 'super_admin'
+          ? '/superadmin/dashboard'
+          : currentUser.role === 'admin'
+          ? '/admin/dashboard'
+          : '/dashboard';
       navigate(dest, { replace: true });
     }
   }, [currentUser, navigate, location]);
 
-  const pick = (r: 'student' | 'admin') => { setRole(r); setStep('auth-form'); setErr(null); setOk(null); };
-  const back = () => { setStep('role-select'); setRole(null); setErr(null); setOk(null); setTab('signin'); };
+  const fillDemo = (u: string, p: string = 'password123') => {
+    setUsername(u);
+    setPassword(p);
+    setErr(null);
+  };
 
   const onSignIn = async (e: React.FormEvent) => {
-    e.preventDefault(); setErr(null); setOk(null);
-    if (!username.trim()) { setErr('Please enter your username.'); return; }
+    e.preventDefault();
+    setErr(null);
+    setOk(null);
+    if (!username.trim()) {
+      setErr('Please enter your username.');
+      return;
+    }
     const email = fullEmail(username);
     setBusy(true);
     const r = await signInWithEmail(email, password);
     setBusy(false);
-    if (r.error) { setErr(r.error); return; }
+    if (r.error) {
+      setErr(r.error);
+      return;
+    }
     setOk('Identity verified. Redirecting…');
     const c = email.toLowerCase();
     const sa = c === 'superadmin@muj.manipal.edu' || c === 'it.admin@muj.manipal.edu';
-    const ad = !sa && (c === COORDINATOR.EMAIL.toLowerCase() || c.includes('dorelal') || c.includes('admin') || c === 'patent.admin@muj.manipal.edu');
-    setTimeout(() => navigate(sa ? '/superadmin/dashboard' : ad ? '/admin/dashboard' : '/dashboard', { replace: true }), 300);
+    const ad =
+      !sa &&
+      (c === COORDINATOR.EMAIL.toLowerCase() ||
+        c.includes('admin') ||
+        c.includes('coord') ||
+        c === 'patent.admin@muj.manipal.edu');
+    setTimeout(() => {
+      navigate(sa ? '/superadmin/dashboard' : ad ? '/admin/dashboard' : '/dashboard', { replace: true });
+    }, 300);
   };
 
   const onRegister = async (e: React.FormEvent) => {
-    e.preventDefault(); setErr(null); setOk(null);
-    if (regPwd !== regPwd2) { setErr('Passwords do not match.'); return; }
-    if (regPwd.length < 6) { setErr('Password must be at least 6 characters.'); return; }
+    e.preventDefault();
+    setErr(null);
+    setOk(null);
+    if (regPwd !== regPwd2) {
+      setErr('Passwords do not match.');
+      return;
+    }
+    if (regPwd.length < 6) {
+      setErr('Password must be at least 6 characters.');
+      return;
+    }
     const email = fullEmail(regUser);
     setBusy(true);
-    const r = await registerUniversityAccount({ email, password: regPwd, fullName: regName, department: regDept, registrationNumber: regNo, phone: regPhone });
+    const r = await registerUniversityAccount({
+      email,
+      password: regPwd,
+      fullName: regName,
+      department: regDept,
+      registrationNumber: regNo,
+      phone: regPhone,
+    });
     setBusy(false);
-    if (r.error) { setErr(r.error); return; }
-    setOk('Registered! Redirecting…');
+    if (r.error) {
+      setErr(r.error);
+      return;
+    }
+    setOk('Registered successfully! Redirecting…');
     setTimeout(() => navigate('/dashboard', { replace: true }), 400);
   };
 
-  // ── focus / blur handlers ──
-  const onF = (e: React.FocusEvent<HTMLInputElement>) => { e.currentTarget.style.borderColor = '#d35400'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(211,84,0,.08)'; };
-  const onB = (e: React.FocusEvent<HTMLInputElement>) => { e.currentTarget.style.borderColor = '#d5d5d5'; e.currentTarget.style.boxShadow = 'none'; };
-
   return (
-    <>
-      {/* Google Font */}
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet" />
-
-      <div style={S.page}>
-        <div style={{ ...S.bg, backgroundImage: `url(${mujBuildingBg})` }} />
-        <div style={S.overlay} />
-
-        <div style={{ ...S.cardWrap, maxWidth: step === 'role-select' ? 440 : 480 }}>
-
-          {step === 'role-select' ? (
-            /* ═════════ STEP 1 — CHOOSE ROLE ═════════ */
-            <div style={S.card} key="s1">
-              <div style={S.accent} />
-              <div style={{ padding: '50px 44px 46px' }}>
-
-                <p style={S.welcomeLabel}>WELCOME TO</p>
-                <img src={mujLogo} alt="Manipal University Jaipur" style={{ display: 'block', margin: '0 auto 24px', maxWidth: 320, width: '100%', height: 'auto' }} />
-
-                <p style={S.portalLabel}>E-Cell Patent Portal</p>
-                <p style={S.subtext}>Choose how you'd like to sign in</p>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 28 }}>
-                  <button type="button" onClick={() => pick('admin')} style={S.blueBtn}
-                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#1a5cb5'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#2074d4'; e.currentTarget.style.transform = 'none'; }}>
-                    Sign in as MUJ Faculty / Admin
-                    <ArrowRight size={16} style={{ opacity: .7 }} />
-                  </button>
-                  <button type="button" onClick={() => pick('student')} style={S.blueBtn}
-                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#1a5cb5'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#2074d4'; e.currentTarget.style.transform = 'none'; }}>
-                    Sign in as MUJ Student
-                    <ArrowRight size={16} style={{ opacity: .7 }} />
-                  </button>
-                </div>
-              </div>
+    <div style={S.page}>
+      <div style={S.cardWrap}>
+        <div className="editorial-card" style={{ padding: '40px 38px', borderRadius: 28 }}>
+          {/* Header */}
+          <div style={{ textAlign: 'center', marginBottom: 24 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+              <img
+                src={ecellLogo}
+                alt="E-CELL MUJ"
+                style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: '50%', backgroundColor: '#fff' }}
+              />
+              <span style={S.welcomeTag}>
+                <Sparkles size={11} /> E-CELL MUJ &bull; IPR CELL
+              </span>
             </div>
 
-          ) : (
-            /* ═════════ STEP 2 — AUTH FORM ═════════ */
-            <div style={S.card} key="s2">
-              <div style={S.accent} />
-              <div style={{ padding: '28px 44px 40px' }}>
+            <img
+              src={mujLogo}
+              alt="Manipal University Jaipur"
+              style={{ display: 'block', margin: '0 auto 14px', maxWidth: 260, width: '100%', height: 'auto' }}
+            />
 
-                {/* back */}
-                <button type="button" onClick={back} style={S.backBtn}
-                  onMouseEnter={e => (e.currentTarget.style.color = '#d35400')}
-                  onMouseLeave={e => (e.currentTarget.style.color = '#b0b0b0')}>
-                  <ArrowLeft size={14} /> Back
-                </button>
+            <h1 style={S.portalTitle}>Patent Application &amp; Invention Portal</h1>
+            <p style={S.subtext}>Sign in with your official university credentials</p>
+          </div>
 
-                {/* header */}
-                <p style={{ ...S.welcomeLabel, fontSize: 11, marginBottom: 2 }}>WELCOME TO</p>
-                <img src={mujLogo} alt="Manipal University Jaipur" style={{ display: 'block', margin: '0 auto 14px', maxWidth: 260, width: '100%', height: 'auto' }} />
-                <p style={{ ...S.portalLabel, fontSize: 12, marginBottom: 2 }}>E-Cell Patent Portal</p>
+          {/* Pill Tab Switcher */}
+          <div style={S.tabRow}>
+            {(['signin', 'register'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => {
+                  setTab(t);
+                  setErr(null);
+                  setOk(null);
+                }}
+                style={{ ...S.tabBtn, ...(tab === t ? S.tabActive : S.tabInactive) }}
+              >
+                {t === 'signin' ? 'Sign In' : 'Register Account'}
+              </button>
+            ))}
+          </div>
 
-                <h2 style={S.formTitle}>{tab === 'signin' ? 'Sign In' : 'Create Account'}</h2>
-                <p style={S.roleChip}>{role === 'admin' ? 'Faculty / Admin' : 'Student'}</p>
-
-                {/* tabs */}
-                <div style={S.tabRow}>
-                  {(['signin', 'register'] as const).map(t => (
-                    <button key={t} type="button"
-                      onClick={() => { setTab(t); setErr(null); setOk(null); }}
-                      style={{ ...S.tabBtn, ...(tab === t ? S.tabActive : S.tabInactive) }}>
-                      {t === 'signin' ? 'Sign In' : 'Register'}
-                    </button>
-                  ))}
-                </div>
-
-                {/* alerts */}
-                {err && <div style={S.alertErr}><AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} /><span>{err}</span></div>}
-                {ok && <div style={S.alertOk}><CheckCircle2 size={15} style={{ flexShrink: 0, marginTop: 1 }} /><span>{ok}</span></div>}
-
-                {tab === 'signin' ? (
-                  <form onSubmit={onSignIn}>
-                    {/* username */}
-                    <div style={{ marginBottom: 16 }}>
-                      <label style={S.label}>Username</label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <input type="text" placeholder="e.g. parth.26020*****" value={username}
-                          onChange={e => setUsername(e.target.value)} required autoFocus autoComplete="username"
-                          style={{ ...S.input, flex: '1 1 0', minWidth: 0 }} onFocus={onF} onBlur={onB} />
-                        <span style={S.domainTag}>@muj.manipal.edu</span>
-                      </div>
-                    </div>
-
-                    {/* password */}
-                    <div style={{ marginBottom: 26, position: 'relative' }}>
-                      <label style={S.label}>Password</label>
-                      <input type={showPwd ? 'text' : 'password'} placeholder="Enter your password"
-                        value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"
-                        style={{ ...S.input, paddingRight: 44 }} onFocus={onF} onBlur={onB} />
-                      <button type="button" tabIndex={-1} onClick={() => setShowPwd(p => !p)}
-                        style={S.eyeBtn}>
-                        {showPwd ? <EyeOff size={17} /> : <Eye size={17} />}
-                      </button>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-                      <button type="submit" disabled={busy}
-                        style={{ ...S.orangeBtn, opacity: busy ? .6 : 1, cursor: busy ? 'not-allowed' : 'pointer' }}
-                        onMouseEnter={e => { if (!busy) e.currentTarget.style.backgroundColor = '#b94600'; }}
-                        onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#d35400'; }}>
-                        {busy ? 'Signing In…' : 'Sign In'} <ArrowRight size={15} />
-                      </button>
-                      <button type="button" style={S.forgotBtn} onClick={() => setShowForgot(true)}
-                        onMouseEnter={e => (e.currentTarget.style.color = '#d35400')}
-                        onMouseLeave={e => (e.currentTarget.style.color = '#999')}>
-                        Forgot Password?
-                      </button>
-                    </div>
-                  </form>
-
-                ) : (
-                  <form onSubmit={onRegister}>
-                    <div style={{ marginBottom: 14 }}>
-                      <label style={S.label}>University Email <span style={S.req}>*</span></label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <input type="text" placeholder="username" value={regUser} onChange={e => setRegUser(e.target.value)} required
-                          style={{ ...S.input, flex: '1 1 0', minWidth: 0 }} onFocus={onF} onBlur={onB} />
-                        <span style={{ ...S.domainTag, fontSize: 13 }}>@muj.manipal.edu</span>
-                      </div>
-                    </div>
-
-                    <div style={{ marginBottom: 14 }}>
-                      <label style={S.label}>Full Name <span style={S.req}>*</span></label>
-                      <div style={{ position: 'relative' }}>
-                        <span style={S.ico}><User size={15} /></span>
-                        <input type="text" placeholder="e.g. Parth Betai" value={regName} onChange={e => setRegName(e.target.value)} required
-                          style={S.inputIco} onFocus={onF} onBlur={onB} />
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-                      <div>
-                        <label style={S.label}>Department</label>
-                        <div style={{ position: 'relative' }}><span style={S.ico}><Building size={15} /></span>
-                          <input type="text" placeholder="e.g. CSE" value={regDept} onChange={e => setRegDept(e.target.value)} style={S.inputIco} onFocus={onF} onBlur={onB} />
-                        </div>
-                      </div>
-                      <div>
-                        <label style={S.label}>Reg. No.</label>
-                        <div style={{ position: 'relative' }}><span style={S.ico}><Hash size={15} /></span>
-                          <input type="text" placeholder="e.g. 219301234" value={regNo} onChange={e => setRegNo(e.target.value)} style={S.inputIco} onFocus={onF} onBlur={onB} />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={{ marginBottom: 14 }}>
-                      <label style={S.label}>Phone</label>
-                      <div style={{ position: 'relative' }}><span style={S.ico}><Phone size={15} /></span>
-                        <input type="tel" placeholder="98********" value={regPhone} onChange={e => setRegPhone(e.target.value)} style={S.inputIco} onFocus={onF} onBlur={onB} />
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
-                      <div>
-                        <label style={S.label}>Password <span style={S.req}>*</span></label>
-                        <div style={{ position: 'relative' }}><span style={S.ico}><Lock size={15} /></span>
-                          <input type="password" placeholder="Min 6 chars" value={regPwd} onChange={e => setRegPwd(e.target.value)} required style={S.inputIco} onFocus={onF} onBlur={onB} />
-                        </div>
-                      </div>
-                      <div>
-                        <label style={S.label}>Confirm <span style={S.req}>*</span></label>
-                        <div style={{ position: 'relative' }}><span style={S.ico}><Lock size={15} /></span>
-                          <input type="password" placeholder="Re-enter" value={regPwd2} onChange={e => setRegPwd2(e.target.value)} required style={S.inputIco} onFocus={onF} onBlur={onB} />
-                        </div>
-                      </div>
-                    </div>
-
-                    <button type="submit" disabled={busy}
-                      style={{ ...S.orangeBtn, width: '100%', justifyContent: 'center', padding: '13px 20px', fontSize: 15, opacity: busy ? .6 : 1, cursor: busy ? 'not-allowed' : 'pointer' }}
-                      onMouseEnter={e => { if (!busy) e.currentTarget.style.backgroundColor = '#b94600'; }}
-                      onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#d35400'; }}>
-                      {busy ? 'Registering…' : 'Complete Registration'} <ArrowRight size={15} />
-                    </button>
-                  </form>
-                )}
-              </div>
+          {/* Alerts */}
+          {err && (
+            <div style={S.alertErr}>
+              <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+              <span>{err}</span>
             </div>
           )}
+          {ok && (
+            <div style={S.alertOk}>
+              <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+              <span>{ok}</span>
+            </div>
+          )}
+
+          {tab === 'signin' ? (
+            <form onSubmit={onSignIn}>
+              {/* 1-Click Demo Quick-Fill Pills */}
+              <div style={{ marginBottom: 18, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6385B2' }}>Demo Quick-Fill:</span>
+                <button
+                  type="button"
+                  onClick={() => fillDemo('aditya.sharma')}
+                  style={S.quickFillPill}
+                >
+                  <Sparkles size={11} />
+                  Aditya Sharma (Student)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fillDemo('patent.admin')}
+                  style={S.quickFillPillSecondary}
+                >
+                  Patent Coordinator (Admin)
+                </button>
+              </div>
+
+              {/* Username Input */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={S.label}>Institutional Username</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="text"
+                    placeholder="e.g. aditya.sharma"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required
+                    autoFocus
+                    autoComplete="username"
+                    style={{ ...S.input, flex: '1 1 0', minWidth: 0 }}
+                  />
+                  <span style={S.domainTag}>@{INSTITUTION.DOMAIN}</span>
+                </div>
+              </div>
+
+              {/* Password Input */}
+              <div style={{ marginBottom: 24, position: 'relative' }}>
+                <label style={S.label}>Password</label>
+                <input
+                  type={showPwd ? 'text' : 'password'}
+                  placeholder="Enter your university password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  style={{ ...S.input, paddingRight: 44 }}
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setShowPwd((p) => !p)}
+                  style={S.eyeBtn}
+                >
+                  {showPwd ? <EyeOff size={17} color="#6385B2" /> : <Eye size={17} color="#6385B2" />}
+                </button>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: 12,
+                }}
+              >
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="btn btn-primary"
+                  style={{ padding: '11px 32px', opacity: busy ? 0.6 : 1, cursor: busy ? 'not-allowed' : 'pointer' }}
+                >
+                  <span />
+                  {busy ? 'Authenticating…' : 'Sign In'} <ArrowRight size={15} />
+                </button>
+
+                <button
+                  type="button"
+                  style={S.forgotBtn}
+                  onClick={() => setShowForgot(true)}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = '#204E96')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = '#6385B2')}
+                >
+                  Forgot Password?
+                </button>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={onRegister}>
+              <div style={{ marginBottom: 14 }}>
+                <label style={S.label}>
+                  University Username <span style={S.req}>*</span>
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="text"
+                    placeholder="username"
+                    value={regUser}
+                    onChange={(e) => setRegUser(e.target.value)}
+                    required
+                    style={{ ...S.input, flex: '1 1 0', minWidth: 0 }}
+                  />
+                  <span style={S.domainTag}>@{INSTITUTION.DOMAIN}</span>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 14 }}>
+                <label style={S.label}>
+                  Full Name <span style={S.req}>*</span>
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <span style={S.ico}>
+                    <User size={15} color="#6385B2" />
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="e.g. Aditya Sharma"
+                    value={regName}
+                    onChange={(e) => setRegName(e.target.value)}
+                    required
+                    style={S.inputIco}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+                <div>
+                  <label style={S.label}>Department</label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={S.ico}>
+                      <Building size={15} color="#6385B2" />
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="e.g. CSE"
+                      value={regDept}
+                      onChange={(e) => setRegDept(e.target.value)}
+                      style={S.inputIco}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label style={S.label}>Registration No.</label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={S.ico}>
+                      <Hash size={15} color="#6385B2" />
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="229301045"
+                      value={regNo}
+                      onChange={(e) => setRegNo(e.target.value)}
+                      style={S.inputIco}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 14 }}>
+                <label style={S.label}>Phone Number</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={S.ico}>
+                    <Phone size={15} color="#6385B2" />
+                  </span>
+                  <input
+                    type="tel"
+                    placeholder="+91 98765 43210"
+                    value={regPhone}
+                    onChange={(e) => setRegPhone(e.target.value)}
+                    style={S.inputIco}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 22 }}>
+                <div>
+                  <label style={S.label}>
+                    Password <span style={S.req}>*</span>
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Min 6 characters"
+                    value={regPwd}
+                    onChange={(e) => setRegPwd(e.target.value)}
+                    required
+                    style={S.input}
+                  />
+                </div>
+                <div>
+                  <label style={S.label}>
+                    Confirm Password <span style={S.req}>*</span>
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Re-enter password"
+                    value={regPwd2}
+                    onChange={(e) => setRegPwd2(e.target.value)}
+                    required
+                    style={S.input}
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={busy}
+                className="btn btn-primary"
+                style={{ width: '100%', padding: '12px 24px', opacity: busy ? 0.6 : 1 }}
+              >
+                <span />
+                {busy ? 'Registering…' : 'Complete Registration'} <ArrowRight size={15} />
+              </button>
+            </form>
+          )}
+
+          <div style={{ marginTop: 24, textAlign: 'center', fontSize: '0.8125rem', color: '#6385B2' }}>
+            Institutional Access Strictly Restricted to{' '}
+            <strong style={{ color: '#152E5A' }}>@{INSTITUTION.DOMAIN}</strong>
+          </div>
         </div>
       </div>
 
-      {/* Forgot Password Dialog */}
+      {/* Forgot Password Modal */}
       {showForgot && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={() => setShowForgot(false)}>
-          <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,.5)' }} />
-          <div style={{ ...S.card, position: 'relative', maxWidth: 420, width: '90%', animation: 'cardIn .35s ease both' }}
-            onClick={e => e.stopPropagation()}>
-            <div style={S.accent} />
-            <div style={{ padding: '36px 40px 32px' }}>
-              <img src={mujLogo} alt="Manipal University Jaipur" style={{ display: 'block', margin: '0 auto 20px', maxWidth: 220, width: '100%', height: 'auto' }} />
-              <h3 style={{ textAlign: 'center', fontSize: 20, fontWeight: 700, color: '#d35400', margin: '0 0 14px', fontFamily: dm }}>
-                Forgot Password?
-              </h3>
-              <p style={{ textAlign: 'center', fontSize: 14, color: '#555', lineHeight: 1.7, margin: '0 0 10px', fontFamily: dm }}>
-                Please contact the <strong>E-Cell MUJ Admin</strong> or your department coordinator to reset your portal password.
-              </p>
-              <p style={{ textAlign: 'center', fontSize: 13, color: '#888', lineHeight: 1.6, margin: '0 0 24px', fontFamily: dm }}>
-                You can reach out via email at<br />
-                <a href="mailto:ecell@muj.manipal.edu" style={{ color: '#d35400', fontWeight: 600, textDecoration: 'none' }}>ecell@muj.manipal.edu</a>
-              </p>
-              <div style={{ textAlign: 'center' }}>
-                <button type="button" onClick={() => setShowForgot(false)}
-                  style={{ ...S.orangeBtn, padding: '10px 36px' }}
-                  onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#b94600'; }}
-                  onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#d35400'; }}>
-                  Got it
-                </button>
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(21, 46, 90, 0.45)',
+            backdropFilter: 'blur(4px)',
+            padding: 16,
+          }}
+          onClick={() => setShowForgot(false)}
+        >
+          <div
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: 28,
+              border: '1px solid #EBE5D5',
+              padding: '36px 32px',
+              maxWidth: 440,
+              width: '100%',
+              boxShadow: '0 20px 50px rgba(21, 46, 90, 0.15)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ textAlign: 'center' }}>
+              <div
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: '50%',
+                  backgroundColor: '#E8EEF6',
+                  color: '#204E96',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 16px',
+                }}
+              >
+                <AlertCircle size={22} />
               </div>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#152E5A', margin: '0 0 10px' }}>
+                Institutional Password Assistance
+              </h3>
+              <p style={{ fontSize: '0.875rem', color: '#354F77', lineHeight: 1.6, margin: '0 0 20px' }}>
+                Password resets for @{INSTITUTION.DOMAIN} accounts are managed through the university central IT
+                directory or Patent Review Cell at{' '}
+                <strong style={{ color: '#204E96' }}>{INSTITUTION.CONTACT_EMAIL}</strong>.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowForgot(false)}
+                className="btn btn-primary"
+                style={{ padding: '10px 32px' }}
+              >
+                <span />
+                Understood
+              </button>
             </div>
           </div>
         </div>
       )}
-
-      <style>{`
-        @keyframes cardIn { from { opacity:0; transform:translateY(14px) } to { opacity:1; transform:translateY(0) } }
-      `}</style>
-    </>
+    </div>
   );
 };
 
 /* ═══════════════════════════════════════════════════════════════════ */
-/*  Styles                                                            */
+/*  Styles - Matching Reference Warm Cream & Royal Navy               */
 /* ═══════════════════════════════════════════════════════════════════ */
-const dm = "'DM Sans', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
-const pf = "'Playfair Display', Georgia, 'Times New Roman', serif";
-
 const S: Record<string, React.CSSProperties> = {
-  page: { position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: dm, overflow: 'auto' },
-  bg: { position: 'absolute', inset: 0, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' },
-  overlay: { position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,.38) 0%, rgba(0,0,0,.52) 100%)', backdropFilter: 'blur(1.5px)' },
-  cardWrap: { position: 'relative', zIndex: 1, width: '100%', margin: '24px 16px', transition: 'max-width .3s' },
-  card: { backgroundColor: '#fff', borderRadius: 16, boxShadow: '0 24px 64px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.08)', overflow: 'hidden', animation: 'cardIn .5s ease both' },
-  accent: { height: 0, display: 'none' },
-
-  welcomeLabel: { textAlign: 'center', fontSize: 13, fontWeight: 500, color: '#d35400', textTransform: 'uppercase', letterSpacing: 2, margin: '0 0 6px', fontFamily: dm, fontStyle: 'normal' },
-  uniName: { textAlign: 'center', fontSize: 26, fontWeight: 700, color: '#1a1a1a', margin: '0 0 4px', fontFamily: pf, lineHeight: 1.25 },
-  ugc: { textAlign: 'center', fontSize: 11.5, color: '#999', fontStyle: 'italic', margin: '0 0 20px', fontFamily: dm },
-  divider: { width: 50, height: 2, backgroundColor: '#e0e0e0', margin: '0 auto 22px', borderRadius: 1 },
-  portalLabel: { textAlign: 'center', fontSize: 14, fontWeight: 700, color: '#333', letterSpacing: .5, margin: '0 0 4px', fontFamily: dm },
-  subtext: { textAlign: 'center', fontSize: 13.5, color: '#aaa', margin: '0 0 0', fontFamily: dm },
-
-  blueBtn: {
-    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-    width: '100%', padding: '15px 24px',
-    backgroundColor: '#2074d4', color: '#fff', border: 'none', borderRadius: 10,
-    fontSize: 15, fontWeight: 600, fontFamily: dm, letterSpacing: .2,
-    cursor: 'pointer', transition: 'all .2s ease',
-    boxShadow: '0 4px 14px rgba(32,116,212,.3)',
-    textDecoration: 'none',
+  page: {
+    minHeight: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FAF7EE',
+    padding: '40px 16px',
   },
-
-  backBtn: { display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#b0b0b0', fontSize: 13, cursor: 'pointer', padding: 0, marginBottom: 16, fontFamily: dm, transition: 'color .15s', fontWeight: 500 },
-
-  formTitle: { textAlign: 'center', color: '#d35400', fontSize: 26, fontWeight: 700, margin: '14px 0 4px', fontFamily: dm },
-  roleChip: { textAlign: 'center', fontSize: 12, color: '#bbb', margin: '0 0 22px', fontFamily: dm, fontWeight: 500, letterSpacing: .5 },
-
-  tabRow: { display: 'flex', marginBottom: 22, borderRadius: 8, overflow: 'hidden', border: '1px solid #e8e8e8' },
-  tabBtn: { flex: 1, padding: '10px 0', border: 'none', fontWeight: 600, fontSize: 13.5, cursor: 'pointer', fontFamily: dm, transition: 'all .2s', letterSpacing: .3 },
-  tabActive: { backgroundColor: '#d35400', color: '#fff' },
-  tabInactive: { backgroundColor: '#fafafa', color: '#aaa' },
-
-  alertErr: { display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 14px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, marginBottom: 16, fontSize: 13, color: '#b91c1c', fontFamily: dm },
-  alertOk: { display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 14px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, marginBottom: 16, fontSize: 13, color: '#15803d', fontFamily: dm },
-
-  label: { display: 'block', fontSize: 13, fontWeight: 600, color: '#555', marginBottom: 7, fontFamily: dm, letterSpacing: .2 },
-  req: { color: '#e74c3c' },
-
+  cardWrap: {
+    position: 'relative',
+    zIndex: 1,
+    width: '100%',
+    maxWidth: 500,
+    margin: '0 auto',
+  },
+  welcomeTag: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#E8EEF6',
+    color: '#204E96',
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    padding: '3px 12px',
+    borderRadius: 9999,
+    letterSpacing: '0.04em',
+    textTransform: 'uppercase',
+  },
+  portalTitle: {
+    textAlign: 'center',
+    fontSize: '1.45rem',
+    fontWeight: 800,
+    color: '#152E5A',
+    margin: '0 0 6px',
+    letterSpacing: '-0.02em',
+  },
+  subtext: {
+    textAlign: 'center',
+    fontSize: '0.875rem',
+    color: '#354F77',
+    margin: 0,
+    lineHeight: 1.5,
+  },
+  tabRow: {
+    display: 'flex',
+    gap: 8,
+    marginBottom: 20,
+    backgroundColor: '#F4EFE0',
+    padding: 4,
+    borderRadius: 9999,
+    border: '1px solid #EBE5D5',
+  },
+  tabBtn: {
+    flex: 1,
+    padding: '8px 0',
+    border: 'none',
+    fontWeight: 600,
+    fontSize: '0.8125rem',
+    cursor: 'pointer',
+    borderRadius: 9999,
+    transition: 'all .2s ease',
+  },
+  tabActive: {
+    backgroundColor: '#204E96',
+    color: '#FFFFFF',
+    boxShadow: '0 2px 6px rgba(32, 78, 150, 0.25)',
+  },
+  tabInactive: {
+    backgroundColor: 'transparent',
+    color: '#354F77',
+  },
+  alertErr: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: '12px 16px',
+    backgroundColor: '#FEF2F2',
+    border: '1px solid #FCA5A5',
+    borderRadius: 14,
+    marginBottom: 16,
+    fontSize: '0.8125rem',
+    color: '#B91C1C',
+  },
+  alertOk: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: '12px 16px',
+    backgroundColor: '#F0FDF4',
+    border: '1px solid #86EFAC',
+    borderRadius: 14,
+    marginBottom: 16,
+    fontSize: '0.8125rem',
+    color: '#15803D',
+  },
+  quickFillPill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 5,
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    padding: '5px 14px',
+    borderRadius: 9999,
+    backgroundColor: '#E8EEF6',
+    color: '#204E96',
+    border: '1px solid #CBDDF2',
+    cursor: 'pointer',
+  },
+  quickFillPillSecondary: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 5,
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    padding: '5px 14px',
+    borderRadius: 9999,
+    backgroundColor: '#FAF7EE',
+    color: '#354F77',
+    border: '1px solid #EBE5D5',
+    cursor: 'pointer',
+  },
+  label: {
+    display: 'block',
+    fontSize: '0.8125rem',
+    fontWeight: 600,
+    color: '#152E5A',
+    marginBottom: 6,
+  },
+  req: {
+    color: '#DC2626',
+  },
   input: {
-    width: '100%', padding: '12px 14px', border: '1px solid #d5d5d5', borderRadius: 8,
-    fontSize: 14.5, fontFamily: dm, color: '#222', background: '#fafafa',
-    outline: 'none', boxSizing: 'border-box' as const, transition: 'border-color .2s, box-shadow .2s, background .2s',
+    width: '100%',
+    padding: '11px 14px',
+    border: '1.5px solid #E0D9C8',
+    borderRadius: 12,
+    fontSize: '0.875rem',
+    color: '#152E5A',
+    background: '#FFFFFF',
+    outline: 'none',
+    boxSizing: 'border-box' as const,
+    transition: 'border-color .15s ease, box-shadow .15s ease',
   },
   inputIco: {
-    width: '100%', padding: '12px 14px 12px 40px', border: '1px solid #d5d5d5', borderRadius: 8,
-    fontSize: 14.5, fontFamily: dm, color: '#222', background: '#fafafa',
-    outline: 'none', boxSizing: 'border-box' as const, transition: 'border-color .2s, box-shadow .2s',
+    width: '100%',
+    padding: '11px 14px 11px 38px',
+    border: '1.5px solid #E0D9C8',
+    borderRadius: 12,
+    fontSize: '0.875rem',
+    color: '#152E5A',
+    background: '#FFFFFF',
+    outline: 'none',
+    boxSizing: 'border-box' as const,
+    transition: 'border-color .15s ease, box-shadow .15s ease',
   },
-  ico: { position: 'absolute' as const, left: 13, top: '50%', transform: 'translateY(-50%)', color: '#bbb', display: 'flex' },
-
-  domainTag: { fontSize: 14, fontWeight: 600, color: '#333', whiteSpace: 'nowrap' as const, flexShrink: 0, fontFamily: dm },
-
-  eyeBtn: { position: 'absolute' as const, right: 13, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#bbb', padding: 0, display: 'flex' },
-
-  orangeBtn: {
-    display: 'inline-flex', alignItems: 'center', gap: 7,
-    padding: '12px 32px', backgroundColor: '#d35400', color: '#fff', border: 'none',
-    borderRadius: 10, fontSize: 14.5, fontWeight: 600, fontFamily: dm, letterSpacing: .3,
-    cursor: 'pointer', transition: 'background .2s, box-shadow .2s, transform .15s',
-    boxShadow: '0 4px 14px rgba(211,84,0,.25)',
+  ico: {
+    position: 'absolute' as const,
+    left: 12,
+    top: '50%',
+    transform: 'translateY(-50%)',
+    display: 'flex',
   },
-
-  forgotBtn: { background: 'none', border: 'none', color: '#999', fontSize: 13, cursor: 'pointer', padding: 0, fontFamily: dm, fontWeight: 500, transition: 'color .15s' },
+  domainTag: {
+    fontSize: '0.875rem',
+    fontWeight: 600,
+    color: '#204E96',
+    whiteSpace: 'nowrap' as const,
+    flexShrink: 0,
+  },
+  eyeBtn: {
+    position: 'absolute' as const,
+    right: 12,
+    top: '50%',
+    transform: 'translateY(-50%)',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: 0,
+    display: 'flex',
+  },
+  forgotBtn: {
+    background: 'none',
+    border: 'none',
+    color: '#6385B2',
+    fontSize: '0.8125rem',
+    cursor: 'pointer',
+    padding: 0,
+    fontWeight: 500,
+    transition: 'color .15s',
+  },
 };
 
 export default LoginPage;

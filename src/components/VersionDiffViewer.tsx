@@ -46,15 +46,15 @@ export const VersionDiffViewer: React.FC<VersionDiffViewerProps> = ({
   ];
 
   return (
-    <div className="card" style={{ marginBottom: '24px', border: '2px solid #0284c7' }}>
+    <div className="card" style={{ marginBottom: '24px', border: '2px solid #204E96', borderRadius: '24px', overflow: 'hidden' }}>
       <div
         className="card-header"
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          backgroundColor: '#f0f9ff',
-          borderBottom: '1px solid #bae6fd',
+          backgroundColor: '#FAF7EE',
+          borderBottom: '1px solid #EBE5D5',
           flexWrap: 'wrap',
           gap: '12px',
         }}
@@ -64,8 +64,8 @@ export const VersionDiffViewer: React.FC<VersionDiffViewerProps> = ({
             style={{
               padding: '6px',
               borderRadius: '6px',
-              backgroundColor: '#e0f2fe',
-              color: '#0369a1',
+              backgroundColor: '#E8EEF6',
+              color: '#204E96',
               display: 'flex',
               alignItems: 'center',
             }}
@@ -97,10 +97,10 @@ export const VersionDiffViewer: React.FC<VersionDiffViewerProps> = ({
             alignItems: 'center',
             gap: '16px',
             padding: '12px 16px',
-            backgroundColor: '#f8fafc',
+            backgroundColor: '#FAF7EE',
             borderRadius: '6px',
             marginBottom: '20px',
-            border: '1px solid #e2e8f0',
+            border: '1px solid #EBE5D5',
             flexWrap: 'wrap',
           }}
         >
@@ -148,7 +148,7 @@ export const VersionDiffViewer: React.FC<VersionDiffViewerProps> = ({
                 border: '1px solid #38bdf8',
                 backgroundColor: '#ffffff',
                 fontWeight: 600,
-                color: '#0369a1',
+                color: '#204E96',
               }}
             >
               {sortedVersions.map((v) => (
@@ -176,7 +176,7 @@ export const VersionDiffViewer: React.FC<VersionDiffViewerProps> = ({
                 backgroundColor: '#ffffff',
                 padding: '4px 10px',
                 borderRadius: '4px',
-                border: '1px solid #e2e8f0',
+                border: '1px solid #EBE5D5',
               }}
             >
               <Clock size={12} className="text-slate-500" />

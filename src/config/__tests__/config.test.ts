@@ -20,7 +20,7 @@ describe('Centralized Configuration & Environment Architecture', () => {
       expect(ENV.INSTITUTION_WEBSITE_URL).toContain('manipal.edu');
       expect(ENV.IPR_CELL_URL).toContain('ipr-cell');
       expect(ENV.CONTACT_EMAIL).toBe('ipr.cell@muj.manipal.edu');
-      expect(ENV.COORDINATOR_NAME).toBe('Dr. Dorelal Sharma');
+      expect(ENV.COORDINATOR_NAME).toBe('Patent Coordinator');
       expect(ENV.ALLOWED_EMAIL_DOMAIN).toBe('muj.manipal.edu');
     });
 
@@ -44,13 +44,13 @@ describe('Centralized Configuration & Environment Architecture', () => {
   });
 
   describe('COORDINATOR details', () => {
-    it('should centralize coordinator Dorelal Ji attributes', () => {
-      expect(COORDINATOR.ID).toBe('user-coord-dorelal');
-      expect(COORDINATOR.FULL_NAME).toBe('Dr. Dorelal Sharma');
-      expect(COORDINATOR.INFORMAL_NAME).toBe('Dorelal Ji');
-      expect(COORDINATOR.EMAIL).toBe('dorelal.coordinator@muj.manipal.edu');
-      expect(COORDINATOR.BADGE).toContain('Dorelal Ji');
-      expect(COORDINATOR.ADMIN_BADGE).toContain('Admin');
+    it('should centralize coordinator attributes', () => {
+      expect(COORDINATOR.ID).toBe('admin-coordinator-uuid');
+      expect(COORDINATOR.FULL_NAME).toBe('Patent Coordinator');
+      expect(COORDINATOR.INFORMAL_NAME).toBe('Patent Coordinator');
+      expect(COORDINATOR.EMAIL).toBe('patent.admin@muj.manipal.edu');
+      expect(COORDINATOR.BADGE).toContain('Patent Review');
+      expect(COORDINATOR.ADMIN_BADGE).toContain('Patent Coordinator');
     });
   });
 
@@ -81,7 +81,7 @@ describe('Centralized Configuration & Environment Architecture', () => {
     it('accepts valid @muj.manipal.edu emails', () => {
       expect(validateMujEmail('aditya.sharma@muj.manipal.edu')).toBe(true);
       expect(validateMujEmail('priya.patel@muj.manipal.edu')).toBe(true);
-      expect(validateMujEmail('dorelal.coordinator@muj.manipal.edu')).toBe(true);
+      expect(validateMujEmail('patent.coordinator@muj.manipal.edu')).toBe(true);
       expect(validateMujEmail('student123@muj.manipal.edu')).toBe(true);
       expect(validateMujEmail('FIRST.LAST@MUJ.MANIPAL.EDU')).toBe(true);
     });

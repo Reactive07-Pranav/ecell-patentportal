@@ -36,19 +36,19 @@ export const INSTITUTION = {
  * Coordinator Metadata & Labels
  */
 export const COORDINATOR = {
-  ID: 'user-coord-dorelal',
+  ID: 'admin-coordinator-uuid',
   EMAIL: ENV.COORDINATOR_EMAIL,
   FULL_NAME: ENV.COORDINATOR_NAME,
   FORMAL_NAME_WITH_ROLE: `${ENV.COORDINATOR_NAME} (Coordinator)`,
-  INFORMAL_NAME: 'Dorelal Ji',
+  INFORMAL_NAME: 'Patent Coordinator',
   TITLE: 'Patent Coordinator',
-  BADGE: '⚖️ Dorelal Ji',
-  ADMIN_BADGE: '⚖️ Dorelal Ji (Admin)',
-  REVIEW_DOCKET_TITLE: 'Dorelal Ji Review Docket & Examination Queue',
-  CLEARANCE_ACTOR: 'Coordinator Dorelal Ji',
-  CLEARANCE_SUCCESS_MESSAGE: 'Public disclosure risk successfully evaluated and cleared by Coordinator Dorelal Ji.',
-  STATUTORY_CLEARANCE_REQUIRED_ERROR: 'Statutory constraint: Prior public disclosure risk must be formally evaluated and cleared by Coordinator Dorelal Ji before approval.',
-  APPROVAL_REASON_DEFAULT: 'Approved for next stage by Coordinator Dorelal Ji following verified statutory and inventorship review.',
+  BADGE: 'Patent Review Cell',
+  ADMIN_BADGE: 'Patent Coordinator',
+  REVIEW_DOCKET_TITLE: 'Patent Review Docket & Examination Queue',
+  CLEARANCE_ACTOR: 'Patent Coordinator',
+  CLEARANCE_SUCCESS_MESSAGE: 'Public disclosure risk successfully evaluated and cleared by Patent Coordinator.',
+  STATUTORY_CLEARANCE_REQUIRED_ERROR: 'Statutory constraint: Prior public disclosure risk must be formally evaluated and cleared by Patent Coordinator before approval.',
+  APPROVAL_REASON_DEFAULT: 'Approved for next stage by Patent Coordinator following verified statutory and inventorship review.',
 } as const;
 
 /**

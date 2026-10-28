@@ -151,9 +151,9 @@ export const ApplicationDetailPage: React.FC = () => {
               onClick={() => setShowDiffViewer(!showDiffViewer)}
               className="btn btn-outline"
               style={{
-                borderColor: showDiffViewer ? '#0284c7' : 'var(--border-color)',
-                color: showDiffViewer ? '#0284c7' : 'var(--text-primary)',
-                backgroundColor: showDiffViewer ? '#f0f9ff' : 'transparent',
+                borderColor: showDiffViewer ? '#204E96' : 'var(--border-color)',
+                color: showDiffViewer ? '#204E96' : 'var(--text-primary)',
+                backgroundColor: showDiffViewer ? '#E8EEF6' : 'transparent',
               }}
             >
               <GitCompare size={15} />

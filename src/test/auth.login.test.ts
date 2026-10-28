@@ -11,8 +11,8 @@ describe('Institutional Authentication & Role Segregation', () => {
   it('validates official MUJ university student emails', () => {
     expect(isAllowedUniversityEmail('aditya.sharma@muj.manipal.edu')).toBe(true);
     expect(isAllowedUniversityEmail('219301234@muj.manipal.edu')).toBe(true);
-    expect(isAllowedUniversityEmail('dorelal.coordinator@muj.manipal.edu')).toBe(true);
-    expect(isAllowedUniversityEmail('dorelal.sharma@muj.manipal.edu')).toBe(true);
+    expect(isAllowedUniversityEmail('patent.admin@muj.manipal.edu')).toBe(true);
+    expect(isAllowedUniversityEmail('coordinator@muj.manipal.edu')).toBe(true);
   });
 
   it('strictly rejects non-university personal email domains', () => {
@@ -40,7 +40,7 @@ describe('Institutional Authentication & Role Segregation', () => {
     expect(fetched?.full_name).toBe('Aditya Sharma');
   });
 
-  it('correctly provisions Patent Coordinator (Dr. Dorelal Sharma) admin profile', async () => {
+  it('correctly provisions Patent Coordinator admin profile', async () => {
     const coordEmail = COORDINATOR.EMAIL;
     const profile = await upsertProfile({
       id: COORDINATOR.ID,
@@ -51,7 +51,7 @@ describe('Institutional Authentication & Role Segregation', () => {
     });
 
     expect(profile.role).toBe('admin');
-    expect(profile.full_name).toBe('Dr. Dorelal Sharma');
+    expect(profile.full_name).toBe(COORDINATOR.FULL_NAME);
 
     const fetched = await fetchCurrentProfile(COORDINATOR.ID);
     expect(fetched?.role).toBe('admin');

@@ -189,7 +189,7 @@ function initLocalStorageIfNeeded() {
     ];
 
     // -------------------------------------------------------------------------
-    // Seed 2: Corrections Required Application (Itemized remarks from Dorelal Ji)
+    // Seed 2: Corrections Required Application (Itemized remarks from Patent Coordinator)
     // -------------------------------------------------------------------------
     const sampleApp2: Application = {
       id: 'app-seed-002',

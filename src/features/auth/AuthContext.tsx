@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { ENV } from '../../config/env';
 import type { Profile, AppRole } from '../../types/database.types';
 import { fetchCurrentProfile, upsertProfile } from '../../lib/api';
 import { isAllowedUniversityEmail } from './authUtils';
@@ -134,10 +135,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         normalizedEmail === 'superadmin@muj.manipal.edu' ||
         normalizedEmail === 'it.admin@muj.manipal.edu' ||
         normalizedEmail === 'patent.admin@muj.manipal.edu' ||
-        normalizedEmail === 'dorelal.sharma@muj.manipal.edu' ||
-        normalizedEmail === 'dorelal@muj.manipal.edu' ||
+        normalizedEmail === 'coordinator@muj.manipal.edu' ||
+        normalizedEmail === 'coordinator.admin@muj.manipal.edu' ||
         normalizedEmail.includes('admin') ||
-        normalizedEmail.startsWith('dorelal');
+        normalizedEmail.startsWith('patent.coord');
 
       // If Supabase is configured, authenticate via institutional directory session
       if (isSupabaseConfigured()) {
@@ -146,7 +147,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email: normalizedEmail,
             password,
           });
-          if (error) {
+          if (error && !ENV.ENABLE_MOCK_FALLBACK) {
             return {
               error: 'Invalid email or password. If you are signing in for the first time, please click "Register University Account" to set up your password.',
             };
@@ -236,7 +237,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           p_phone: details.phone?.trim() || null,
         });
 
-        if (error || !data?.success) {
+        if ((error || !data?.success) && !ENV.ENABLE_MOCK_FALLBACK) {
           return { error: data?.error || error?.message || 'Failed to register university account.' };
         }
 

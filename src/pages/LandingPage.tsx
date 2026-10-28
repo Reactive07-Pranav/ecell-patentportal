@@ -4,13 +4,9 @@ import { useAuth } from '../features/auth/AuthContext';
 import {
   ShieldCheck,
   FileText,
-  Lock,
-  History,
   ArrowRight,
   AlertCircle,
-  Search,
   BookOpen,
-  Award,
 } from 'lucide-react';
 import { INSTITUTION, COORDINATOR } from '../config/constants';
 import { fetchApplicationById } from '../lib/api';
@@ -148,7 +144,8 @@ export const LandingPage: React.FC = () => {
               )
             ) : (
               <>
-                <Link to="/auth/login" className="btn btn-primary btn-lg" style={{ padding: '12px 24px' }}>
+                <Link to="/auth/login" className="btn btn-primary btn-lg">
+                  <span />
                   Sign In with University ID
                   <ArrowRight size={16} />
                 </Link>
@@ -178,153 +175,92 @@ export const LandingPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="grid-2" style={{ gap: '16px' }}>
-          <div className="card">
-            <div className="card-body" style={{ padding: '24px' }}>
-              <div
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  backgroundColor: '#f0f9ff',
-                  borderRadius: '6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#0284c7',
-                  marginBottom: '14px',
-                }}
-              >
-                <FileText size={20} />
-              </div>
-              <h3 style={{ fontSize: '1rem', margin: '0 0 6px' }}>1. Structured Technical Disclosure</h3>
-              <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                Submit comprehensive disclosures including technical domain, problem statement, working mechanism, novel inventive step, and inventor percentage shares with automated 100% share balance validation.
-              </p>
+        <div className="grid-2" style={{ gap: '24px' }}>
+          <div className="editorial-card">
+            <div className="card-dot-indicator">
+              <span /><span /><span /><span />
             </div>
+            <h3 className="editorial-card-title">1. Structured Technical Disclosure</h3>
+            <p className="editorial-card-desc">
+              Submit comprehensive disclosures including technical domain, problem statement, working mechanism, novel inventive step, and inventor percentage shares with automated 100% share balance validation.
+            </p>
           </div>
 
-          <div className="card">
-            <div className="card-body" style={{ padding: '24px' }}>
-              <div
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  backgroundColor: '#f0fdf4',
-                  borderRadius: '6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#16a34a',
-                  marginBottom: '14px',
-                }}
-              >
-                <ShieldCheck size={20} />
-              </div>
-              <h3 style={{ fontSize: '1rem', margin: '0 0 6px' }}>2. Novelty Screening (Dr. Dorelal Sharma)</h3>
-              <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                Preliminary novelty screening under Section 2(1)(j) and Section 3 of the Indian Patents Act 1970. The coordinator assesses patentability, prior-art differentiation, and institutional eligibility.
-              </p>
+          <div className="editorial-card">
+            <div className="card-dot-indicator pattern-2">
+              <span /><span /><span /><span />
             </div>
+            <h3 className="editorial-card-title">2. Novelty Screening (Patent Coordinator)</h3>
+            <p className="editorial-card-desc">
+              Preliminary novelty screening under Section 2(1)(j) and Section 3 of the Indian Patents Act 1970. The coordinator assesses patentability, prior-art differentiation, and institutional eligibility.
+            </p>
           </div>
 
-          <div className="card">
-            <div className="card-body" style={{ padding: '24px' }}>
-              <div
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  backgroundColor: '#fff7ed',
-                  borderRadius: '6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#ea580c',
-                  marginBottom: '14px',
-                }}
-              >
-                <History size={20} />
-              </div>
-              <h3 style={{ fontSize: '1rem', margin: '0 0 6px' }}>3. Itemized Correction &amp; Version N+1</h3>
-              <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                If claims or drawings require refinement, the coordinator issues itemized remarks. Applicants resolve remarks in a split-screen workspace, preserving complete audit trails across revisions.
-              </p>
+          <div className="editorial-card">
+            <div className="card-dot-indicator">
+              <span /><span /><span /><span />
             </div>
+            <h3 className="editorial-card-title">3. Itemized Correction &amp; Version N+1</h3>
+            <p className="editorial-card-desc">
+              If claims or drawings require refinement, the coordinator issues itemized remarks. Applicants resolve remarks in a split-screen workspace, preserving complete audit trails across revisions.
+            </p>
           </div>
 
-          <div className="card">
-            <div className="card-body" style={{ padding: '24px' }}>
-              <div
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  backgroundColor: '#faf5ff',
-                  borderRadius: '6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#9333ea',
-                  marginBottom: '14px',
-                }}
-              >
-                <Award size={20} />
-              </div>
-              <h3 style={{ fontSize: '1rem', margin: '0 0 6px' }}>4. Directorate Approval &amp; Filing Cell</h3>
-              <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                Approved applications are formally signed off via coordinator MFA step-up and routed to the university patent attorneys for statutory drafting and filing with the Controller General of Patents.
-              </p>
+          <div className="editorial-card">
+            <div className="card-dot-indicator pattern-2">
+              <span /><span /><span /><span />
             </div>
+            <h3 className="editorial-card-title">4. Directorate Approval &amp; Filing Cell</h3>
+            <p className="editorial-card-desc">
+              Approved applications are formally signed off via coordinator MFA step-up and routed to the university patent attorneys for statutory drafting and filing with the Controller General of Patents.
+            </p>
           </div>
         </div>
       </div>
 
       {/* Security, Confidentiality & Quick Tracker */}
-      <div className="grid-2" style={{ gap: '20px' }}>
+      <div className="grid-2" style={{ gap: '24px' }}>
         {/* Quick Reference Tracker */}
-        <div className="card">
-          <div className="card-header">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Search size={16} color="var(--accent-primary)" />
-              <h3 style={{ fontSize: '0.9375rem', margin: 0 }}>Application Status Search</h3>
+        <div className="editorial-card">
+          <div className="card-dot-indicator">
+            <span /><span /><span /><span />
+          </div>
+          <h3 className="editorial-card-title">Application Status Search</h3>
+          <p className="editorial-card-desc" style={{ marginBottom: '18px' }}>
+            Enter your official disclosure reference number (e.g. <code>{INSTITUTION.SHORT_NAME}-PAT-2026-0001</code>) to inspect review status:
+          </p>
+
+          <form onSubmit={handleTrackApplication} style={{ display: 'flex', gap: '8px' }}>
+            <input
+              type="text"
+              className="form-control"
+              placeholder={`${INSTITUTION.SHORT_NAME}-PAT-YYYY-XXXX`}
+              value={refSearch}
+              onChange={(e) => setRefSearch(e.target.value)}
+              style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', borderRadius: '9999px', padding: '10px 18px' }}
+            />
+            <button type="submit" className="btn btn-primary" disabled={isSearching}>
+              <span />
+              {isSearching ? 'Searching...' : 'Track'}
+            </button>
+          </form>
+
+          {searchError && (
+            <div style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '10px' }}>
+              {searchError}
             </div>
-          </div>
-          <div className="card-body">
-            <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginTop: 0, marginBottom: '14px' }}>
-              Enter your official disclosure reference number (e.g. <code>{INSTITUTION.SHORT_NAME}-PAT-2026-0001</code>) to inspect review status:
-            </p>
-
-            <form onSubmit={handleTrackApplication} style={{ display: 'flex', gap: '8px' }}>
-              <input
-                type="text"
-                className="form-control"
-                placeholder={`${INSTITUTION.SHORT_NAME}-PAT-YYYY-XXXX`}
-                value={refSearch}
-                onChange={(e) => setRefSearch(e.target.value)}
-                style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}
-              />
-              <button type="submit" className="btn btn-primary btn-sm" disabled={isSearching}>
-                {isSearching ? 'Searching...' : 'Track'}
-              </button>
-            </form>
-
-            {searchError && (
-              <div style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '8px' }}>
-                {searchError}
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
         {/* Confidentiality & Security Guarantee */}
-        <div className="card" style={{ borderLeft: '4px solid var(--accent-primary)' }}>
-          <div className="card-body">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <Lock size={16} color="var(--accent-primary)" />
-              <h3 style={{ fontSize: '0.9375rem', margin: 0 }}>Data Isolation &amp; Confidentiality</h3>
-            </div>
-            <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-              Invention disclosures, prior-art documents, and engineering schematics are stored in isolated private storage. Strict database Row-Level Security (RLS) ensures that student disclosures are inaccessible to other students, while administrative oversight is strictly reserved for Patent Coordinator <strong>{COORDINATOR.FULL_NAME}</strong>.
-            </p>
+        <div className="editorial-card">
+          <div className="card-dot-indicator pattern-2">
+            <span /><span /><span /><span />
           </div>
+          <h3 className="editorial-card-title">Data Isolation &amp; Confidentiality</h3>
+          <p className="editorial-card-desc">
+            Invention disclosures, prior-art documents, and engineering schematics are stored in isolated private storage. Strict database Row-Level Security (RLS) ensures that student disclosures are inaccessible to other students, while administrative oversight is strictly reserved for Patent Coordinator <strong>{COORDINATOR.FULL_NAME}</strong>.
+          </p>
         </div>
       </div>
 

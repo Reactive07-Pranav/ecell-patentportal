@@ -14,8 +14,9 @@ export const isSupabaseConfigured = (): boolean => {
     supabaseAnonKey &&
     supabaseUrl.startsWith('http') &&
     !supabaseUrl.includes('mock-instance') &&
+    !supabaseUrl.includes('placeholder') &&
     supabaseAnonKey !== 'mock-key' &&
-    supabaseAnonKey !== 'placeholder'
+    !supabaseAnonKey.includes('placeholder')
   );
 };
 
