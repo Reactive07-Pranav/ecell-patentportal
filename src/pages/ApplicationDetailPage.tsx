@@ -77,7 +77,7 @@ export const ApplicationDetailPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="container" style={{ padding: '60px 0', textAlign: 'center' }}>
+      <div className="container" style={{ paddingBlock: '60px', textAlign: 'center' }}>
         <p>Loading application details and verified audit history...</p>
       </div>
     );
@@ -85,7 +85,7 @@ export const ApplicationDetailPage: React.FC = () => {
 
   if (errorMessage || !application) {
     return (
-      <div className="container" style={{ padding: '40px 0' }}>
+      <div className="container" style={{ paddingBlock: '40px' }}>
         <div className="alert alert-danger">{errorMessage || 'Application not found'}</div>
         <Link to="/dashboard" className="btn btn-outline">
           &larr; Return to Dashboard
@@ -213,7 +213,7 @@ export const ApplicationDetailPage: React.FC = () => {
       )}
 
       {/* Main Grid: Details + Documents + History */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
+      <div className="grid-main-aside">
         {/* Left Column: Full Technical Disclosure */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           {/* Invention Overview */}
