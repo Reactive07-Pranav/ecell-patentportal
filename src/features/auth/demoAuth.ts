@@ -1,5 +1,5 @@
-// Demo mode only (no Supabase configured): simulates the emailed verification code and the
-// coordinator's authenticator app inside this browser, with the same rules the live backend
+// Demo mode only (no Supabase configured): simulates the emailed codes and the
+// authenticator app inside this browser, with the same rules the live backend
 // applies. Nothing here is a security control; the live portal uses Supabase Auth instead.
 import { COORDINATOR, DEMO_PERSONAS } from '../../config/constants';
 import { generateOtpCode } from './otp';
@@ -92,6 +92,12 @@ export function checkDemoCode(email: string, code: string, now = Date.now()): bo
 
 export function getDemoTotpSecret(userId: string): string | null {
   return read<Record<string, string>>(TOTP_KEY, {})[userId] ?? null;
+}
+
+export function removeDemoTotpSecret(userId: string): void {
+  const secrets = read<Record<string, string>>(TOTP_KEY, {});
+  delete secrets[userId];
+  write(TOTP_KEY, secrets);
 }
 
 export function saveDemoTotpSecret(userId: string, secret: string): void {

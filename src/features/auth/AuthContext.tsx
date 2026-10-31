@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import type { Profile, AppRole } from '../../types/database.types';
 import { fetchCurrentProfile, upsertProfile } from '../../lib/api';
@@ -11,6 +11,7 @@ import {
   isDemoVerified,
   issueDemoCode,
   saveDemoRegistration,
+  removeDemoTotpSecret,
   saveDemoTotpSecret,
   takeDemoRegistration,
   type DemoRegistration,
@@ -26,13 +27,16 @@ const MFA_TIMESTAMP_KEY = STORAGE_KEYS.MFA_TIMESTAMP;
 const DEMO_ADMIN_EMAILS = [COORDINATOR.EMAIL.toLowerCase(), 'patent.admin@muj.manipal.edu'];
 const GENERIC_CODE_ERROR = 'That code is invalid or has expired. Request a new code and try again.';
 
-const isPrivileged = (p: Profile | null) => p?.role === 'admin' || p?.role === 'super_admin';
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const live = isSupabaseConfigured();
   const [currentUser, setCurrentUser] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [mfaStatus, setMfaStatus] = useState<MfaStatus>('not_required');
+  // Set while a forgot-password reset holds a recovery session, so the login page does not redirect
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const recoveryEmail = useRef<string | null>(null);
+  // Lost authenticator: the password session's token, kept while the emailed code replaces the session
+  const passwordSessionToken = useRef<string | null>(null);
   const [pendingFactorId, setPendingFactorId] = useState<string | null>(null);
   // Demo mode: authenticator secret shown during setup, saved once its first code checks out
   const [pendingDemoSecret, setPendingDemoSecret] = useState<string | null>(null);
@@ -52,9 +56,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [mfaVerifiedAt]);
 
-  // Coordinators and super admins need an aal2 (TOTP) session; the database enforces the same rule
+  // Every role needs an aal2 (TOTP) session; the database enforces the same rule
   const refreshMfa = async (profile: Profile | null) => {
-    if (!profile || !isPrivileged(profile)) {
+    if (!profile) {
       setMfaStatus('not_required');
       return;
     }
@@ -82,7 +86,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return profile;
   };
 
-  // Demo mode: local personas only. Every sign-in asks coordinators for a fresh authenticator code.
+  // Demo mode: local personas only. Every sign-in asks for a fresh authenticator code.
   const signInDemo = async (email: string, details?: DemoRegistration) => {
     const isAdmin = DEMO_ADMIN_EMAILS.includes(email);
     const userId = isAdmin ? COORDINATOR.ID : `student-${email.split('@')[0]}`;
@@ -221,7 +225,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (live) {
         // Supabase Auth emails a 6-digit code; the account works only after verifyEmailCode.
         // An already-registered address gets the same response and no email (no account enumeration).
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email: normalizedEmail,
           password: details.password,
           options: {
@@ -240,6 +244,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
           if (error.code === 'captcha_failed') return { error: 'Please complete the security check and try again.' };
           return { error: error.message || 'Failed to register university account.' };
+        }
+        // "Confirm email" off in the dashboard: Supabase signs the new account in at once
+        if (data.session) {
+          await loadProfile(data.session.user.id);
+          return {};
         }
         return { needsVerification: true };
       }
@@ -341,6 +350,139 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return true;
   };
 
+  const rateLimitError = (code?: string) =>
+    code === 'over_email_send_rate_limit' || code === 'over_request_rate_limit'
+      ? 'Too many emails were requested. Please wait a few minutes and try again.'
+      : code === 'captcha_failed'
+      ? 'Please complete the security check and try again.'
+      : null;
+
+  // Forgot password, step 1: Supabase emails a 6-digit recovery code (same reply whether or not the account exists)
+  const requestPasswordReset: AuthContextType['requestPasswordReset'] = async (email, captchaToken) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!isAllowedUniversityEmail(normalizedEmail)) return { error: SECURITY_RULES.RESTRICTED_EMAIL_ERROR };
+    if (!live) return isDemoVerified(normalizedEmail) ? { demoCode: issueDemoCode(normalizedEmail) } : {};
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, { captchaToken });
+    const limited = rateLimitError(error?.code);
+    return limited ? { error: limited } : {};
+  };
+
+  // Step 2: the code opens a recovery session. Accounts with an authenticator must also pass TOTP (step 3).
+  const verifyPasswordResetCode: AuthContextType['verifyPasswordResetCode'] = async (email, code, captchaToken) => {
+    if (!isOtpCode(code)) return { error: 'Enter the 6-digit code from the email.' };
+    const normalizedEmail = email.trim().toLowerCase();
+    setPasswordRecovery(true);
+    if (!live) {
+      if (!checkDemoCode(normalizedEmail, code)) {
+        setPasswordRecovery(false);
+        return { error: GENERIC_CODE_ERROR };
+      }
+      recoveryEmail.current = normalizedEmail;
+      return {};
+    }
+    const { error } = await supabase.auth.verifyOtp({
+      email: normalizedEmail,
+      token: code,
+      type: 'recovery',
+      options: { captchaToken },
+    });
+    if (error) {
+      setPasswordRecovery(false);
+      return { error: GENERIC_CODE_ERROR };
+    }
+    recoveryEmail.current = normalizedEmail;
+    const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    return { needsTotp: data?.nextLevel === 'aal2' && data.currentLevel !== 'aal2' };
+  };
+
+  // Step 3: new password (plus the authenticator code when the account has one), then sign out
+  const completePasswordReset: AuthContextType['completePasswordReset'] = async (newPassword, totp) => {
+    if (newPassword.length < 6) return { error: 'Password must be at least 6 characters in length.' };
+    if (!live) {
+      setPasswordRecovery(false);
+      recoveryEmail.current = null;
+      return {};
+    }
+    if (totp) {
+      const { data } = await supabase.auth.mfa.listFactors();
+      const factorId = data?.totp[0]?.id;
+      if (!factorId || (await supabase.auth.mfa.challengeAndVerify({ factorId, code: totp.trim() })).error) {
+        return { error: 'That authenticator code did not match. Try the current code.', needsTotp: true };
+      }
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      if (error.code === 'insufficient_aal') {
+        return { error: 'Enter the code from your authenticator app to change the password.', needsTotp: true };
+      }
+      if (error.code === 'same_password') return { error: 'Choose a password you have not used for this account.' };
+      if (error.code === 'weak_password') return { error: error.message };
+      return { error: 'The password could not be changed. Request a new code and try again.' };
+    }
+    await supabase.auth.signOut();
+    setCurrentUser(null);
+    setMfaStatus('not_required');
+    setPasswordRecovery(false);
+    recoveryEmail.current = null;
+    return {};
+  };
+
+  const cancelPasswordReset = async () => {
+    if (live && passwordRecovery) {
+      await supabase.auth.signOut();
+      setCurrentUser(null);
+      setMfaStatus('not_required');
+    }
+    setPasswordRecovery(false);
+    recoveryEmail.current = null;
+  };
+
+  // Lost authenticator, step 1: the student is signed in with their password (aal1); email them a code
+  const sendAuthenticatorResetCode: AuthContextType['sendAuthenticatorResetCode'] = async (captchaToken) => {
+    if (!currentUser) return { error: 'Please sign in again.' };
+    if (currentUser.role !== 'student') return { error: 'Coordinators and super admins: ask a super admin to reset your authenticator.' };
+    if (!live) return { demoCode: issueDemoCode(currentUser.university_email) };
+    const { data } = await supabase.auth.getSession();
+    passwordSessionToken.current = data.session?.access_token ?? null;
+    const { error } = await supabase.auth.signInWithOtp({
+      email: currentUser.university_email,
+      options: { shouldCreateUser: false, captchaToken },
+    });
+    const limited = rateLimitError(error?.code);
+    if (limited) return { error: limited };
+    return error ? { error: 'The code could not be sent. Please try again shortly.' } : {};
+  };
+
+  // Step 2: the emailed code plus the earlier password session prove both factors; the server removes the
+  // old authenticator and the gate asks for a new one
+  const confirmAuthenticatorReset: AuthContextType['confirmAuthenticatorReset'] = async (code, captchaToken) => {
+    if (!currentUser) return { error: 'Please sign in again.' };
+    if (!isOtpCode(code)) return { error: 'Enter the 6-digit code from the email.' };
+    if (!live) {
+      if (!checkDemoCode(currentUser.university_email, code)) return { error: GENERIC_CODE_ERROR };
+      removeDemoTotpSecret(currentUser.id);
+      setMfaStatus('enroll');
+      return {};
+    }
+    const passwordToken = passwordSessionToken.current;
+    if (!passwordToken) return { error: 'Please send a new code first.' };
+    const { error } = await supabase.auth.verifyOtp({
+      email: currentUser.university_email,
+      token: code,
+      type: 'email',
+      options: { captchaToken },
+    });
+    if (error) return { error: GENERIC_CODE_ERROR };
+    const { error: resetError } = await supabase.functions.invoke('reset-authenticator', {
+      body: { password_access_token: passwordToken },
+    });
+    passwordSessionToken.current = null;
+    if (resetError) return { error: 'The authenticator could not be reset. Sign out, sign in again and retry.' };
+    await supabase.auth.refreshSession();
+    await refreshMfa(currentUser);
+    return {};
+  };
+
   const signOut = async () => {
     setIsLoading(true);
     try {
@@ -385,6 +527,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         mfaStatus,
         enrollTotp,
         verifyTotpMfa,
+        passwordRecovery,
+        requestPasswordReset,
+        verifyPasswordResetCode,
+        completePasswordReset,
+        cancelPasswordReset,
+        sendAuthenticatorResetCode,
+        confirmAuthenticatorReset,
       }}
     >
       {children}

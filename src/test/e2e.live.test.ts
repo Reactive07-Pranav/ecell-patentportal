@@ -50,12 +50,12 @@ describe.skipIf(!DB_URL)('live backend', { timeout: 120_000 }, () => {
   const count = async (sql: string, params: unknown[] = []) => (await q(`SELECT count(*)::int AS n FROM ${sql}`, params))[0].n;
   const appRow = async () => (await q(`SELECT * FROM applications WHERE id::text = $1`, [appId]))[0];
   const totpSecrets: Record<string, string> = {};
-  // Coordinators and super admins also pass TOTP, as the MfaGate does
+  // Every role passes TOTP, as the MfaGate does
   const signIn = async (email: string, password = pw) => {
     await supabase.auth.signOut();
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
-    if (email === emails.coord || email === emails.superAdmin) {
+    {
       if (!totpSecrets[email]) {
         const { data: f, error: enrollError } = await supabase.auth.mfa.enroll({ factorType: 'totp' });
         if (enrollError) throw enrollError;

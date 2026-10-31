@@ -24,7 +24,7 @@ The portal replaces manual email attachments to the university patent coordinato
 
 ## 1. Project Overview & Key Capabilities
 
-- **Institutional Identity & Email Verification**: Accounts use an `@muj.manipal.edu` address and password, and work only after the 6-digit code emailed to that inbox is entered. Coordinators and super admins also enter an authenticator-app code (TOTP) at every sign-in.
+- **Institutional Identity & Two-Factor Sign-In**: Accounts use an `@muj.manipal.edu` address and password and work only after the 6-digit code emailed at sign-up is entered. Every role (students, coordinators, super admins) also enters an authenticator-app code (TOTP) at every sign-in. Forgotten passwords and lost authenticators are reset with emailed codes.
 - **Structured Multi-Step Disclosure Form**: 8-section form capturing applicant details, co-inventors, problem statement, technical description, novelty claims, and practical utility.
 - **Draft Autosave & Incomplete Progress**: Students can save draft disclosures at any stage without mandatory validation blocking.
 - **Private Document Management**: Complete specifications (PDF/DOCX), technical drawings (PDF/PNG), and guide NOCs are stored in private storage with short-lived (15-minute) signed access URLs.
@@ -151,11 +151,11 @@ npm run dev
 The portal will open at `http://localhost:5173`.
 
 ### Demo Mode and Test Personas
-Without `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` the portal runs in **demo mode**: data lives only in your browser, and nothing is a real security control. The login page has quick-fill buttons:
-- **Student**: `Aditya Sharma` (`aditya.sharma@muj.manipal.edu`), already verified.
-- **Coordinator**: `Patent Coordinator` (`patent.admin@muj.manipal.edu`), asked for an authenticator code at every sign-in.
+Without `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` the portal runs in **demo mode**: data lives only in your browser, and nothing is a real security control. Sign in with one of these usernames (any password works in demo mode):
+- **Student**: `Aditya Sharma` (`aditya.sharma@muj.manipal.edu`).
+- **Coordinator**: `Patent Coordinator` (`patent.admin@muj.manipal.edu`).
 
-Demo mode also simulates both security steps: registering a new account shows the emailed code in an on-page **Demo inbox**, and the coordinator sets up a real authenticator app (Google / Microsoft Authenticator) with a setup key.
+Demo mode simulates every security step: emailed codes (registration, forgot password, lost authenticator) appear in an on-page **Demo inbox**, and the authenticator app is set up with a setup key (a demo-only "Show current code" button stands in for the app).
 
 ---
 
@@ -166,17 +166,25 @@ Tables, triggers, functions and Row Level Security policies live in `supabase/mi
 2. `20261025000000_verified_auth_and_atomic_workflow.sql`: privilege fixes and atomic workflow RPCs
 3. `20261029000000_super_admin_role.sql`: `super_admin` role
 4. `20261029000100_frontend_direct_workflow.sql`: validated status changes, snapshots and notifications by trigger, super admin console
-5. `20261029000200_email_otp_verification_and_mfa.sql`: email-code verification, coordinator TOTP (AAL2), daily draft limit, registration kill switch
+5. `20261029000200_email_otp_verification_and_mfa.sql`: Supabase Auth sign-up with emailed code, coordinator TOTP (AAL2), daily draft limit, registration kill switch
+6. `20261031000000_student_authenticator.sql`: patent records and files need an authenticator (aal2) session for every role
 
 (`20261021000000_init_patent_portal.sql` is an identical copy of `001_initial_schema.sql`.)
 
 ### Applying Migrations to Live Supabase:
-**Before migration 5, configure Supabase Auth email (custom SMTP, "Confirm email" on, the code template).** It makes every existing email/password account verify by code at next sign-in. The full order is in `docs/security/email-otp-and-2fa.md` section 6.
+**Before migrations 5 and 6, configure Supabase Auth in the dashboard** (`supabase/config.toml` applies only to a local Supabase):
+1. **Authentication → Sign In / Providers → Email**: "Confirm email" **on**; email OTP length 6, expiry 600 s.
+2. **Authentication → Emails → SMTP Settings**: a custom SMTP sender. The built-in sender allows only a few emails per hour for the whole project, and every registration, password reset and authenticator reset sends one.
+3. **Authentication → Emails → Templates**: paste `supabase/templates/confirmation.html` into *Confirm signup*, `recovery.html` into *Reset Password* and `magic_link.html` into *Magic Link* (each shows `{{ .Token }}`, no link).
+4. **Authentication → Multi-Factor**: TOTP enabled.
+5. Deploy the lost-authenticator function: `npx supabase functions deploy reset-authenticator --project-ref <ref>`.
+
+Existing accounts are not reset to unverified. Accounts without an authenticator set one up at their next sign-in.
 
 ```bash
 npx supabase db push --db-url "<session pooler connection string>"
 ```
-Safe-mode rollback for migration 5: `supabase/rollbacks/20261029000200_email_otp_verification_and_mfa.down.sql`.
+Safe-mode rollback for migration 5: `supabase/rollbacks/20261029000200_email_otp_verification_and_mfa.down.sql`. Migration 6: `supabase/rollbacks/20261031000000_student_authenticator.down.sql` (students work without the authenticator again).
 
 ### RLS Policies Summary:
 - **Default Deny**: All tables require explicit policies.
@@ -190,8 +198,10 @@ Safe-mode rollback for migration 5: `supabase/rollbacks/20261029000200_email_otp
 
 ### Student Registration and Sign-In
 - Students register with an `@muj.manipal.edu` address and password. Supabase Auth emails a 6-digit code (valid 10 minutes, single use); the account works only after the code is entered.
-- The `profiles` row (role `student`) is created only once the address is verified. Unverified users cannot file applications, and unverified sign-ups are purged after 24 hours.
-- Details, threat model, deployment order and runbook: `docs/security/email-otp-and-2fa.md`.
+- The `profiles` row (role `student`) is created only once the address is verified.
+- At the first sign-in every user sets up an authenticator app (QR code or setup key); every later sign-in asks for its code. Patent records and files are readable and writable only from such a session (`is_aal2()`).
+- **Forgot password**: *Forgot Password?* → username → emailed 6-digit code → new password (plus the authenticator code when the account has one). Then sign in again.
+- **Lost authenticator (students)**: after the password, *Lost your authenticator app?* → emailed 6-digit code. The Edge Function `reset-authenticator` checks both sessions (password + fresh code, same account) and removes the old app; the student sets up a new one. Coordinators and super admins are reset by a super admin. Losing both the password and the authenticator needs the IPR cell.
 
 ### Coordinator (Admin) and Super Admin
 1. Grant the role from the Supabase SQL Editor:

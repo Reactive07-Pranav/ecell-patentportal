@@ -230,7 +230,7 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-# Must stay true: the database cannot tell an OTP confirmation from an auto-confirmation.
+# On: new accounts work only after the 6-digit code emailed at sign-up is entered.
 enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
@@ -255,6 +255,16 @@ otp_expiry = 600
 [auth.email.template.confirmation]
 subject = "Your MUJ Patent Portal verification code"
 content_path = "./supabase/templates/confirmation.html"
+
+# Forgot password: 6-digit code, no link
+[auth.email.template.recovery]
+subject = "Your MUJ Patent Portal password reset code"
+content_path = "./supabase/templates/recovery.html"
+
+# Lost authenticator (students): 6-digit code sent by signInWithOtp
+[auth.email.template.magic_link]
+subject = "Your MUJ Patent Portal sign-in code"
+content_path = "./supabase/templates/magic_link.html"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
@@ -321,7 +331,7 @@ max_enrolled_factors = 10
 
 # Control MFA via App Authenticator (TOTP)
 [auth.mfa.totp]
-# Coordinators and super admins must pass TOTP (AAL2); is_admin() / is_super_admin() check it.
+# Every role must pass TOTP (AAL2): is_admin() / is_super_admin() and the student restrictive policies check it.
 enroll_enabled = true
 verify_enabled = true
 
@@ -449,3 +459,6 @@ enabled = true
 # Called by Supabase Auth, which signs the request with the hook secret instead of sending a user JWT
 [functions.send-auth-email]
 verify_jwt = false
+
+[functions.reset-authenticator]
+verify_jwt = true

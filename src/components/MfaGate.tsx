@@ -5,15 +5,26 @@ import { isOtpCode, normalizeOtpInput } from '../features/auth/otp';
 import { totpCode } from '../features/auth/totp';
 import { getDemoTotpSecret } from '../features/auth/demoAuth';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { ENV } from '../config/env';
+import { Turnstile } from './Turnstile';
 
-/** TOTP step for coordinators and super admins: enroll an authenticator app once, then enter its code each sign-in. */
+/** TOTP step for every role: enroll an authenticator app once, then enter its code each sign-in. */
 export const MfaGate: React.FC = () => {
-  const { mfaStatus, enrollTotp, verifyTotpMfa, signOut, currentUser } = useAuth();
+  const { mfaStatus, enrollTotp, verifyTotpMfa, signOut, currentUser, sendAuthenticatorResetCode, confirmAuthenticatorReset } =
+    useAuth();
   const [setup, setSetup] = useState<{ qrCode: string; secret: string; otpauthUri?: string } | null>(null);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [demoCurrentCode, setDemoCurrentCode] = useState<string | null>(null);
+  // Lost authenticator (students): emailed code, then set up a new app
+  const [lost, setLost] = useState<null | 'start' | 'sent'>(null);
+  const [lostCode, setLostCode] = useState('');
+  const [lostInfo, setLostInfo] = useState<string | null>(null);
+  const [lostDemoCode, setLostDemoCode] = useState<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
+  const isStudent = currentUser?.role === 'student';
   const enrolling = mfaStatus === 'enroll';
   const showCodeForm = !enrolling || setup !== null;
   const demoSecret = isSupabaseConfigured()
@@ -31,6 +42,59 @@ export const MfaGate: React.FC = () => {
     setBusy(false);
     if ('error' in result) setError(result.error);
     else setSetup(result);
+  };
+
+  const takeCaptcha = () => {
+    if (ENV.TURNSTILE_SITE_KEY && !captchaToken) {
+      setError('Please complete the security check.');
+      return null;
+    }
+    const token = captchaToken ?? undefined;
+    setCaptchaToken(null);
+    setCaptchaKey((k) => k + 1);
+    return { token };
+  };
+
+  const sendLostCode = async () => {
+    setError(null);
+    const captcha = takeCaptcha();
+    if (!captcha) return;
+    setBusy(true);
+    const r = await sendAuthenticatorResetCode(captcha.token);
+    setBusy(false);
+    if (r.error) {
+      setError(r.error);
+      return;
+    }
+    setLost('sent');
+    setLostCode('');
+    setLostDemoCode(r.demoCode ?? null);
+    setLostInfo(`A 6-digit code is on its way to ${currentUser?.university_email}.`);
+  };
+
+  const onLostVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!isOtpCode(lostCode)) {
+      setError('Enter the 6-digit code from the email.');
+      return;
+    }
+    const captcha = takeCaptcha();
+    if (!captcha) return;
+    setBusy(true);
+    const r = await confirmAuthenticatorReset(lostCode, captcha.token);
+    setBusy(false);
+    if (r.error) {
+      setLostCode('');
+      setError(r.error);
+      return;
+    }
+    // mfaStatus is now 'enroll': the setup button appears
+    setLost(null);
+    setLostDemoCode(null);
+    setSetup(null);
+    setCode('');
+    setLostInfo('Your old authenticator was removed. Set up the new one.');
   };
 
   const onVerify = async (e: React.FormEvent) => {
@@ -60,8 +124,8 @@ export const MfaGate: React.FC = () => {
         </div>
         <div className="card-body">
           <p style={{ marginTop: 0 }}>
-            {currentUser?.role === 'super_admin' ? 'Super admin' : 'Coordinator'} access needs a 6-digit code from an
-            authenticator app such as Microsoft Authenticator, Google Authenticator or Authy.
+            {currentUser?.role === 'super_admin' ? 'Super admin' : currentUser?.role === 'admin' ? 'Coordinator' : 'Portal'} access
+            needs a 6-digit code from an authenticator app such as Microsoft Authenticator, Google Authenticator or Authy.
           </p>
 
           {enrolling && !setup && (
@@ -118,7 +182,7 @@ export const MfaGate: React.FC = () => {
             </div>
           )}
 
-          {showCodeForm && (
+          {showCodeForm && !lost && (
             <form onSubmit={onVerify} noValidate>
               <div className="form-group">
                 <label htmlFor="totp-code" className="form-label">
@@ -145,7 +209,80 @@ export const MfaGate: React.FC = () => {
             </form>
           )}
 
-          {showCodeForm && demoSecret && (
+          {lostInfo && (
+            <div role="status" className="alert alert-success" style={{ marginTop: 16 }}>
+              <span>{lostInfo}</span>
+            </div>
+          )}
+
+          {isStudent && mfaStatus === 'challenge' && !lost && (
+            <button
+              type="button"
+              onClick={() => setLost('start')}
+              style={{ marginTop: 12, padding: 0, background: 'none', border: 'none', color: 'var(--accent-primary)', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}
+            >
+              Lost your authenticator app?
+            </button>
+          )}
+
+          {lost === 'start' && (
+            <div style={{ marginTop: 16 }}>
+              <p style={{ marginTop: 0 }}>
+                We will email a 6-digit code to <strong>{currentUser?.university_email}</strong>. With your password (already
+                entered) and that code, your old authenticator is removed and you set up a new one.
+              </p>
+              <Turnstile onToken={setCaptchaToken} resetKey={captchaKey} />
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button type="button" className="btn btn-primary" onClick={sendLostCode} disabled={busy}>
+                  <span />
+                  {busy ? 'Sending…' : 'Email me a code'}
+                </button>
+                <button type="button" className="btn btn-outline" onClick={() => setLost(null)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {lost === 'sent' && (
+            <form onSubmit={onLostVerify} noValidate style={{ marginTop: 16 }}>
+              {lostDemoCode && (
+                <p role="note" style={{ marginTop: 0 }}>
+                  <strong>Demo inbox:</strong>{' '}
+                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, letterSpacing: '0.2em' }}>{lostDemoCode}</span>
+                </p>
+              )}
+              <div className="form-group">
+                <label htmlFor="lost-code" className="form-label">
+                  Code from the email
+                </label>
+                <input
+                  id="lost-code"
+                  className="form-control"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  value={lostCode}
+                  onChange={(e) => setLostCode(normalizeOtpInput(e.target.value))}
+                  autoFocus
+                  style={{ fontFamily: 'var(--font-mono)', letterSpacing: '0.3em', fontSize: '1.1rem', maxWidth: 200 }}
+                />
+              </div>
+              <Turnstile onToken={setCaptchaToken} resetKey={captchaKey} />
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button type="submit" className="btn btn-primary" disabled={busy}>
+                  <span />
+                  {busy ? 'Checking…' : 'Reset authenticator'}
+                </button>
+                <button type="button" className="btn btn-outline" onClick={sendLostCode} disabled={busy}>
+                  Send a new code
+                </button>
+              </div>
+            </form>
+          )}
+
+          {showCodeForm && !lost && demoSecret && (
             <details style={{ marginTop: 16, fontSize: '0.875rem' }}>
               <summary style={{ cursor: 'pointer' }}>No authenticator app? (demo mode only)</summary>
               <p style={{ margin: '8px 0' }}>
