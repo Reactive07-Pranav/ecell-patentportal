@@ -49,6 +49,7 @@ const L = legacy.user_id;
 await db.query(`INSERT INTO auth.sessions (user_id) VALUES ($1)`, [L]);
 await db.exec(readFileSync(`${root}/supabase/migrations/20261029000200_email_otp_verification_and_mfa.sql`, 'utf8'));
 await db.exec(readFileSync(`${root}/supabase/migrations/20261031000000_student_authenticator.sql`, 'utf8'));
+await db.exec(readFileSync(`${root}/supabase/migrations/20261031000100_fix_signup_trigger_search_path.sql`, 'utf8'));
 
 const A = '11111111-1111-1111-1111-111111111111';
 const B = '22222222-2222-2222-2222-222222222222';
@@ -332,4 +333,8 @@ assert.equal((await as(A, `UPDATE inventors SET full_name = 'x' WHERE applicatio
 assert.ok((await as(A, `SELECT count(*)::int AS n FROM applications`))[0].n >= 1, 'aal2 student sees own disclosures');
 await as(null, `INSERT INTO inventors (application_id, full_name, email, department) VALUES ($1, 'Editor Check', 'e@muj.manipal.edu', 'CSE')`, [aApp]);
 ok('students need an authenticator (aal2) session for patent records; SQL editor still works');
+// 18. Supabase Auth inserts sign-ups with search_path = auth; the triggers must still resolve
+await db.exec(`SET search_path = auth; INSERT INTO auth.users (id, email, raw_app_meta_data) VALUES ('55555555-0000-0000-0000-000000000003', 'auth.path@muj.manipal.edu', '{"provider":"email"}'); RESET search_path;`);
+assert.equal((await as(null, `SELECT count(*)::int AS n FROM auth.users WHERE email = 'auth.path@muj.manipal.edu'`))[0].n, 1);
+ok('sign-up triggers work under the auth search_path');
 console.log('all SQL checks passed');
