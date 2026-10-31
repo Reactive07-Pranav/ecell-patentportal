@@ -1,854 +1,854 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { RefreshCw, X } from 'lucide-react';
 import {
-  fetchAllProfiles,
+  fetchAdminAuditLog,
+  fetchAuthEvents,
   fetchProcessSupervisionOverview,
+  fetchRegistrationEnabled,
+  fetchUserDirectory,
+  runAccountAction,
+  setRegistrationEnabled,
   superAdminResetUserPassword,
   superAdminUpdateUserRole,
-  fetchSuperAdminTelemetry,
-  type ProcessSupervisionItem,
 } from '../lib/api';
-import type { Profile, AppRole } from '../types/database.types';
-import { getStatusDisplayName, getStatusBadgeClass } from '../features/applications/workflow';
-import { INSTITUTION, COORDINATOR } from '../config/constants';
-import {
-  ShieldCheck,
-  Users,
-  FileCheck,
-  Clock,
-  KeyRound,
-  Search,
-  RefreshCw,
-  CheckCircle2,
-  AlertCircle,
-  Activity,
-  Database,
-  Lock,
-  UserCheck,
-  Layers,
-  BarChart3,
-  Server,
-  Shield
-} from 'lucide-react';
+import type { AccountAction, AdminAuditEntry, AuthEvent, DirectoryUser, ProcessSupervisionItem } from '../lib/api';
+import type { AppRole, ApplicationStatus } from '../types/database.types';
+import { useAuth } from '../features/auth/AuthContext';
+import { INSTITUTION } from '../config/constants';
+import '../styles/admin-console.css';
+
+type Tab = 'overview' | 'people' | 'activity' | 'settings';
+type PeopleFilter = 'all' | 'pending' | 'no_authenticator' | 'suspended' | 'staff';
+
+const ROLE_LABEL: Record<AppRole, string> = { student: 'Student', admin: 'Coordinator', super_admin: 'Super admin' };
+
+// Pipeline stages in workflow order, with the portal's status colours
+const STAGES: { status: ApplicationStatus; label: string; color: string }[] = [
+  { status: 'draft', label: 'Draft', color: '#C9BFA6' },
+  { status: 'submitted', label: 'Submitted', color: '#6385B2' },
+  { status: 'under_review', label: 'Under review', color: '#D99A2B' },
+  { status: 'corrections_required', label: 'Corrections asked', color: '#C8504A' },
+  { status: 'resubmitted', label: 'Resubmitted', color: '#204E96' },
+  { status: 'approved_next_stage', label: 'Approved', color: '#2E8B57' },
+];
+const WAITING_ON_COORDINATOR: ApplicationStatus[] = ['submitted', 'resubmitted', 'under_review'];
+const STALE_DAYS = 7;
+
+const ACTION_LABEL: Record<string, string> = {
+  role_changed: 'Changed role',
+  password_reset: 'Set a new password',
+  authenticator_reset: 'Reset authenticator',
+  signed_out_everywhere: 'Signed out everywhere',
+  account_suspended: 'Suspended account',
+  account_reactivated: 'Reactivated account',
+  registration_opened: 'Opened registration',
+  registration_closed: 'Closed registration',
+};
+
+const DAY = 86_400_000;
+const daysSince = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / DAY);
+
+function relative(iso: string | null): string {
+  if (!iso) return 'Never';
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 31) return `${days} d ago`;
+  return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+const stamp = (iso: string) =>
+  new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+function describeDetails(entry: AdminAuditEntry): string {
+  const d = entry.details ?? {};
+  if (entry.action === 'role_changed' && d.from && d.to) {
+    return `${ROLE_LABEL[d.from as AppRole] ?? d.from} → ${ROLE_LABEL[d.to as AppRole] ?? d.to}`;
+  }
+  if (typeof d.reason === 'string') return `Reason: ${d.reason}`;
+  if (typeof d.sessions_ended === 'number') return `${d.sessions_ended} session(s) ended`;
+  if (typeof d.factors_removed === 'number') return `${d.factors_removed} authenticator(s) removed`;
+  return '';
+}
+
+const isPending = (u: DirectoryUser) => !u.role && !u.email_confirmed_at;
 
 export const SuperAdminDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'users' | 'telemetry' | 'process' | 'system'>('users');
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [processItems, setProcessItems] = useState<ProcessSupervisionItem[]>([]);
-  const [telemetry, setTelemetry] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'student' | 'admin' | 'super_admin'>('all');
+  const { currentUser } = useAuth();
+  const [tab, setTab] = useState<Tab>('overview');
+  const [people, setPeople] = useState<DirectoryUser[]>([]);
+  const [pipeline, setPipeline] = useState<ProcessSupervisionItem[]>([]);
+  const [audit, setAudit] = useState<AdminAuditEntry[]>([]);
+  const [authEvents, setAuthEvents] = useState<AuthEvent[]>([]);
+  const [registrationOpen, setRegistrationOpen] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
-  // Password Reset Modal State
-  const [resetModalUser, setResetModalUser] = useState<Profile | null>(null);
-  const [newPassword, setNewPassword] = useState('');
-  const [isResetting, setIsResetting] = useState(false);
-  const [modalFeedback, setModalFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<PeopleFilter>('all');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activityView, setActivityView] = useState<'admin' | 'auth'>('admin');
 
-  // Role Change Modal State
-  const [roleModalUser, setRoleModalUser] = useState<Profile | null>(null);
-  const [selectedRole, setSelectedRole] = useState<AppRole>('student');
-  const [isUpdatingRole, setIsUpdatingRole] = useState(false);
-  const [roleFeedback, setRoleFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  const loadData = async () => {
-    setIsLoading(true);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
     try {
-      const [allUsers, allProcesses, telemetryData] = await Promise.all([
-        fetchAllProfiles(),
+      const [dir, pipe, log, events, open] = await Promise.all([
+        fetchUserDirectory(),
         fetchProcessSupervisionOverview(),
-        fetchSuperAdminTelemetry(),
+        fetchAdminAuditLog(),
+        fetchAuthEvents().catch(() => [] as AuthEvent[]),
+        fetchRegistrationEnabled(),
       ]);
-      setProfiles(allUsers);
-      setProcessItems(allProcesses);
-      setTelemetry(telemetryData);
+      setPeople(dir);
+      setPipeline(pipe);
+      setAudit(log);
+      setAuthEvents(events);
+      setRegistrationOpen(open);
+      setUpdatedAt(new Date());
     } catch (err) {
-      console.error('Failed to load super admin supervision data:', err);
+      setLoadError(err instanceof Error ? err.message : 'The console could not load.');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadData();
   }, []);
 
-  const handleResetPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!resetModalUser) return;
-    if (newPassword.length < 6) {
-      setModalFeedback({ type: 'error', text: 'Password must be at least 6 characters.' });
-      return;
-    }
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-    setIsResetting(true);
-    setModalFeedback(null);
-    try {
-      const res = await superAdminResetUserPassword(
-        resetModalUser.university_email,
-        newPassword,
-        resetModalUser.full_name,
-        resetModalUser.department || undefined
-      );
+  // Derived figures
+  const pending = people.filter(isPending);
+  const active = people.filter((u) => u.role);
+  const withoutAuthenticator = active.filter((u) => !u.has_authenticator && !u.suspended);
+  const suspended = people.filter((u) => u.suspended);
+  const roleCount = (r: AppRole) => active.filter((u) => u.role === r).length;
+  const stale = pipeline
+    .filter((a) => WAITING_ON_COORDINATOR.includes(a.status) && daysSince(a.updated_at) >= STALE_DAYS)
+    .sort((a, b) => a.updated_at.localeCompare(b.updated_at));
+  const waitingLongest = pipeline
+    .filter((a) => WAITING_ON_COORDINATOR.includes(a.status))
+    .sort((a, b) => a.updated_at.localeCompare(b.updated_at))
+    .slice(0, 6);
+  const byDepartment = useMemo(() => {
+    const counts = new Map<string, number>();
+    pipeline.forEach((a) => counts.set(a.applicant_department || 'Not specified', (counts.get(a.applicant_department || 'Not specified') ?? 0) + 1));
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [pipeline]);
+  const attentionCount = pending.length + withoutAuthenticator.length + suspended.length + stale.length + (registrationOpen ? 0 : 1);
 
-      if (res.success) {
-        setModalFeedback({
-          type: 'success',
-          text: `Password for ${resetModalUser.university_email} successfully updated!`,
-        });
-        setNewPassword('');
-        setTimeout(() => {
-          setResetModalUser(null);
-          setModalFeedback(null);
-        }, 1500);
-      } else {
-        setModalFeedback({ type: 'error', text: res.error || 'Failed to reset password.' });
-      }
-    } catch (err) {
-      setModalFeedback({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to reset password.',
-      });
-    } finally {
-      setIsResetting(false);
-    }
+  const openPeople = (f: PeopleFilter) => {
+    setFilter(f);
+    setQuery('');
+    setTab('people');
   };
 
-  const handleUpdateRole = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!roleModalUser) return;
-
-    setIsUpdatingRole(true);
-    setRoleFeedback(null);
-    try {
-      const res = await superAdminUpdateUserRole(roleModalUser.id, selectedRole);
-      if (res.success) {
-        setRoleFeedback({
-          type: 'success',
-          text: `Role for ${roleModalUser.full_name} updated to ${selectedRole.toUpperCase()}!`,
-        });
-        await loadData();
-        setTimeout(() => {
-          setRoleModalUser(null);
-          setRoleFeedback(null);
-        }, 1400);
-      } else {
-        setRoleFeedback({ type: 'error', text: res.error || 'Failed to update user role.' });
-      }
-    } catch (err) {
-      setRoleFeedback({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to update user role.',
-      });
-    } finally {
-      setIsUpdatingRole(false);
-    }
-  };
-
-  // Filtered Users
-  const filteredProfiles = profiles.filter((p) => {
-    const matchesSearch =
-      p.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.university_email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.department && p.department.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (p.registration_number && p.registration_number.toLowerCase().includes(searchQuery.toLowerCase()));
-
-    const matchesRole = roleFilter === 'all' || p.role === roleFilter;
-    return matchesSearch && matchesRole;
+  const visiblePeople = people.filter((u) => {
+    const q = query.trim().toLowerCase();
+    if (q && !`${u.full_name ?? ''} ${u.email} ${u.registration_number ?? ''} ${u.department ?? ''}`.toLowerCase().includes(q)) return false;
+    if (filter === 'pending') return isPending(u);
+    if (filter === 'no_authenticator') return Boolean(u.role) && !u.has_authenticator && !u.suspended;
+    if (filter === 'suspended') return u.suspended;
+    if (filter === 'staff') return u.role === 'admin' || u.role === 'super_admin';
+    return true;
   });
 
-  // Supervision Metrics
-  const totalUsers = telemetry?.total_users ?? profiles.length;
-  const totalStudents = telemetry?.total_students ?? profiles.filter((p) => p.role === 'student').length;
-  const totalAdmins = telemetry?.total_admins ?? profiles.filter((p) => p.role === 'admin').length;
-  const totalApplications = telemetry?.total_applications ?? processItems.length;
+  const selected = people.find((u) => u.id === selectedId) ?? null;
 
-  const statusCounts = telemetry?.applications_by_status || {};
-  const draftCount = statusCounts.draft || 0;
-  const submittedCount = statusCounts.submitted || 0;
-  const inReviewCount = statusCounts.under_review || 0;
-  const correctionsCount = statusCounts.corrections_required || 0;
-  const resubmittedCount = statusCounts.resubmitted || 0;
-  const approvedCount = statusCounts.approved_next_stage || 0;
-
-  const deptCounts = telemetry?.applications_by_department || {};
+  const tabs: { id: Tab; label: string; count?: number; alert?: boolean }[] = [
+    { id: 'overview', label: 'Overview', count: attentionCount || undefined, alert: attentionCount > 0 },
+    { id: 'people', label: 'People', count: people.length },
+    { id: 'activity', label: 'Activity' },
+    { id: 'settings', label: 'Settings' },
+  ];
 
   return (
-    <div className="container" style={{ paddingBlock: '28px 80px' }}>
-      {/* Super Admin Supervision Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
+    <div className="container ac">
+      <header className="ac-head">
         <div>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px', backgroundColor: '#f3e8ff', color: '#7e22ce', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
-            <ShieldCheck size={14} />
-            Master IT &amp; Process Governance
-          </div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>
-            Portal Supervision &amp; User Administration
-          </h1>
-          <p style={{ margin: '4px 0 0', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-            Supervise accounts, assign roles, inspect operational pipeline telemetry, and maintain institutional uptime.
-          </p>
+          <h1>Administration</h1>
+          <p>Accounts, sign-in security and the patent pipeline for {INSTITUTION.NAME}.</p>
         </div>
-
-        <button
-          type="button"
-          onClick={loadData}
-          className="btn btn-outline"
-          disabled={isLoading}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-        >
-          <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
-          Refresh Directory
-        </button>
-      </div>
-
-      {/* Statutory Confidentiality Shield Notice */}
-      <div
-        className="alert alert-info"
-        style={{
-          marginBottom: '24px',
-          backgroundColor: '#faf5ff',
-          borderColor: '#e9d5ff',
-          color: '#6b21a8',
-          display: 'flex',
-          alignItems: 'flex-start',
-          gap: '12px',
-        }}
-      >
-        <Lock size={18} style={{ flexShrink: 0, marginTop: '2px', color: '#9333ea' }} />
-        <div style={{ fontSize: '0.8125rem', lineHeight: 1.5 }}>
-          <strong>Statutory IPR Confidentiality Shield Active:</strong> Under Section 39 of the Indian Patents Act and {INSTITUTION.NAME} IPR Policy, technical invention descriptions, novel claims, and private blueprints are strictly shielded from IT supervision. The Super Admin manages user identity, lifecycle milestones, and administrative support without viewing secret patent bodies or claims.
+        <div className="ac-head-tools">
+          {updatedAt && <span aria-live="polite">Updated {updatedAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>}
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => void load()} disabled={loading}>
+            <RefreshCw size={14} aria-hidden="true" className={loading ? 'animate-spin' : undefined} />
+            {loading ? 'Refreshing…' : 'Refresh'}
+          </button>
         </div>
-      </div>
+      </header>
 
-      {/* Telemetry Metrics Grid */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-          gap: '16px',
-          marginBottom: '28px',
-        }}
-      >
-        <div className="card" style={{ padding: '16px 20px', borderLeft: '4px solid #2563eb' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase' }}>
-            <span>Total Registered Users</span>
-            <Users size={16} color="#2563eb" />
-          </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: '6px' }}>
-            {totalUsers}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-            {totalStudents} Students • {totalAdmins} Coordinators
-          </div>
-        </div>
-
-        <div className="card" style={{ padding: '16px 20px', borderLeft: '4px solid #0d9488' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase' }}>
-            <span>Total Filed Inventions</span>
-            <Layers size={16} color="#0d9488" />
-          </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: '6px' }}>
-            {totalApplications}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-            {submittedCount + inReviewCount + resubmittedCount} Active in Screening
-          </div>
-        </div>
-
-        <div className="card" style={{ padding: '16px 20px', borderLeft: '4px solid #16a34a' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase' }}>
-            <span>Approved for IPO Filing</span>
-            <FileCheck size={16} color="#16a34a" />
-          </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#15803d', marginTop: '6px' }}>
-            {approvedCount}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-            Passed statutory evaluation
-          </div>
-        </div>
-
-        <div className="card" style={{ padding: '16px 20px', borderLeft: '4px solid #9333ea' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase' }}>
-            <span>Database &amp; RLS State</span>
-            <Database size={16} color="#9333ea" />
-          </div>
-          <div style={{ fontSize: '1.125rem', fontWeight: 700, color: '#16a34a', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Activity size={16} />
-            PostgreSQL Live
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
-            Row Level Security (RLS) Enforced
-          </div>
-        </div>
-      </div>
-
-      {/* Tab Navigation */}
-      <div style={{ display: 'flex', gap: '12px', borderBottom: '1px solid var(--border-light)', marginBottom: '24px', overflowX: 'auto' }}>
-        <button
-          type="button"
-          onClick={() => setActiveTab('users')}
-          style={{
-            padding: '10px 16px',
-            background: 'none',
-            border: 'none',
-            borderBottom: activeTab === 'users' ? '2px solid #7c3aed' : '2px solid transparent',
-            fontWeight: activeTab === 'users' ? 700 : 500,
-            color: activeTab === 'users' ? '#7c3aed' : 'var(--text-muted)',
-            cursor: 'pointer',
-            fontSize: '0.9375rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}
-        >
-          <Users size={16} />
-          User &amp; Identity Management ({profiles.length})
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('telemetry')}
-          style={{
-            padding: '10px 16px',
-            background: 'none',
-            border: 'none',
-            borderBottom: activeTab === 'telemetry' ? '2px solid #7c3aed' : '2px solid transparent',
-            fontWeight: activeTab === 'telemetry' ? 700 : 500,
-            color: activeTab === 'telemetry' ? '#7c3aed' : 'var(--text-muted)',
-            cursor: 'pointer',
-            fontSize: '0.9375rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}
-        >
-          <BarChart3 size={16} />
-          Pipeline &amp; Department Telemetry
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('process')}
-          style={{
-            padding: '10px 16px',
-            background: 'none',
-            border: 'none',
-            borderBottom: activeTab === 'process' ? '2px solid #7c3aed' : '2px solid transparent',
-            fontWeight: activeTab === 'process' ? 700 : 500,
-            color: activeTab === 'process' ? '#7c3aed' : 'var(--text-muted)',
-            cursor: 'pointer',
-            fontSize: '0.9375rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}
-        >
-          <Clock size={16} />
-          Process Supervision Log ({processItems.length})
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('system')}
-          style={{
-            padding: '10px 16px',
-            background: 'none',
-            border: 'none',
-            borderBottom: activeTab === 'system' ? '2px solid #7c3aed' : '2px solid transparent',
-            fontWeight: activeTab === 'system' ? 700 : 500,
-            color: activeTab === 'system' ? '#7c3aed' : 'var(--text-muted)',
-            cursor: 'pointer',
-            fontSize: '0.9375rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}
-        >
-          <Server size={16} />
-          Infrastructure &amp; Security State
-        </button>
-      </div>
-
-      {/* TAB 1: User Directory & Identity Management */}
-      {activeTab === 'users' && (
-        <div className="card" style={{ borderRadius: '10px', overflow: 'hidden' }}>
-          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', padding: '16px 20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 300px' }}>
-              <Search size={16} color="var(--text-muted)" />
-              <input
-                type="text"
-                className="form-control"
-                placeholder="Search by name, email, department, roll number..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ fontSize: '0.8125rem', padding: '7px 12px' }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Role Filter:</span>
-              <select
-                className="form-control"
-                value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value as any)}
-                style={{ fontSize: '0.8125rem', padding: '6px 10px', width: 'auto' }}
-              >
-                <option value="all">All Roles</option>
-                <option value="student">Students</option>
-                <option value="admin">Coordinators (Admin)</option>
-                <option value="super_admin">Super Admins</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="card-body" style={{ padding: 0 }}>
-            <div className="table-responsive">
-              <table className="table" style={{ margin: 0, width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border-medium)' }}>
-                    <th style={{ padding: '12px 18px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>User &amp; Full Name</th>
-                    <th style={{ padding: '12px 18px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>University Email</th>
-                    <th style={{ padding: '12px 18px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Role</th>
-                    <th style={{ padding: '12px 18px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Department</th>
-                    <th style={{ padding: '12px 18px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Registration No.</th>
-                    <th style={{ padding: '12px 18px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredProfiles.map((p) => (
-                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                      <td style={{ padding: '14px 18px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                        {p.full_name}
-                      </td>
-                      <td style={{ padding: '14px 18px', fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>
-                        {p.university_email}
-                      </td>
-                      <td style={{ padding: '14px 18px' }}>
-                        <span
-                          style={{
-                            padding: '3px 8px',
-                            borderRadius: '4px',
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
-                            textTransform: 'uppercase',
-                            backgroundColor:
-                              p.role === 'super_admin'
-                                ? '#f3e8ff'
-                                : p.role === 'admin'
-                                ? '#ccfbf1'
-                                : '#e0f2fe',
-                            color:
-                              p.role === 'super_admin'
-                                ? '#7e22ce'
-                                : p.role === 'admin'
-                                ? '#0f766e'
-                                : '#0369a1',
-                            border: `1px solid ${
-                              p.role === 'super_admin'
-                                ? '#d8b4fe'
-                                : p.role === 'admin'
-                                ? '#99f6e4'
-                                : '#bae6fd'
-                            }`,
-                          }}
-                        >
-                          {p.role === 'super_admin' ? 'Super Admin' : p.role === 'admin' ? 'Coordinator' : 'Student'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '14px 18px', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                        {p.department || 'Not specified'}
-                      </td>
-                      <td style={{ padding: '14px 18px', fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>
-                        {p.registration_number || '—'}
-                      </td>
-                      <td style={{ padding: '14px 18px', textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: '6px' }}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setRoleModalUser(p);
-                              setSelectedRole(p.role);
-                              setRoleFeedback(null);
-                            }}
-                            className="btn btn-outline btn-sm"
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem' }}
-                          >
-                            <UserCheck size={12} />
-                            Change Role
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setResetModalUser(p);
-                              setNewPassword('');
-                              setModalFeedback(null);
-                            }}
-                            className="btn btn-outline btn-sm"
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem' }}
-                          >
-                            <KeyRound size={12} />
-                            Reset Password
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {filteredProfiles.length === 0 && (
-                    <tr>
-                      <td colSpan={6} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
-                        No user accounts found matching your query.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+      {loadError && (
+        <div role="alert" className="alert alert-danger" style={{ marginBottom: 20 }}>
+          <span>
+            {loadError} Sign out and back in with your authenticator code, then refresh.
+          </span>
         </div>
       )}
 
-      {/* TAB 2: Telemetry & Funnel Overview */}
-      {activeTab === 'telemetry' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* Stage Funnel Telemetry */}
-          <div className="card" style={{ padding: '24px', borderRadius: '10px' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 4px' }}>
-              Invention Lifecycle Pipeline Funnel
-            </h3>
-            <p style={{ margin: '0 0 20px', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-              Real-time aggregation across examination lifecycle stages (Confidentiality shield active).
-            </p>
+      <div className="ac-tabs" role="tablist" aria-label="Administration sections">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            id={`ac-tab-${t.id}`}
+            aria-selected={tab === t.id}
+            aria-controls={`ac-panel-${t.id}`}
+            className="ac-tab"
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+            {t.count !== undefined && <span className={`ac-count${t.alert ? ' ac-count-alert' : ''}`}>{t.count}</span>}
+          </button>
+        ))}
+      </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
-              <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Draft Mode</div>
-                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#334155', marginTop: '4px' }}>{draftCount}</div>
-              </div>
-              <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '14px', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', color: '#1d4ed8', fontWeight: 600, textTransform: 'uppercase' }}>Submitted</div>
-                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#1e40af', marginTop: '4px' }}>{submittedCount}</div>
-              </div>
-              <div style={{ backgroundColor: '#f0fdfa', border: '1px solid #99f6e4', borderRadius: '8px', padding: '14px', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', color: '#0f766e', fontWeight: 600, textTransform: 'uppercase' }}>Under Review</div>
-                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f766e', marginTop: '4px' }}>{inReviewCount}</div>
-              </div>
-              <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '14px', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 600, textTransform: 'uppercase' }}>Corrections Req.</div>
-                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#b45309', marginTop: '4px' }}>{correctionsCount}</div>
-              </div>
-              <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '14px', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', color: '#15803d', fontWeight: 600, textTransform: 'uppercase' }}>Resubmitted</div>
-                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#166534', marginTop: '4px' }}>{resubmittedCount}</div>
-              </div>
-              <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', padding: '14px', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', color: '#047857', fontWeight: 600, textTransform: 'uppercase' }}>Approved Stage</div>
-                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#065f46', marginTop: '4px' }}>{approvedCount}</div>
-              </div>
+      <div role="tabpanel" id={`ac-panel-${tab}`} aria-labelledby={`ac-tab-${tab}`}>
+        {tab === 'overview' && (
+          <>
+            <div className="ac-overview">
+              <section className="ac-panel" aria-labelledby="ac-attention-title">
+                <div className="ac-panel-head">
+                  <h2 id="ac-attention-title">Needs attention</h2>
+                </div>
+                {loading && !people.length ? (
+                  <div className="ac-panel-body">
+                    <div className="ac-skeleton" style={{ width: '70%', marginBottom: 14 }} />
+                    <div className="ac-skeleton" style={{ width: '55%', marginBottom: 14 }} />
+                    <div className="ac-skeleton" style={{ width: '62%' }} />
+                  </div>
+                ) : attentionCount === 0 ? (
+                  <p className="ac-calm">
+                    <strong>Nothing needs attention.</strong> Every account has an authenticator, no sign-ups are waiting
+                    and the coordinator queue has nothing older than {STALE_DAYS} days.
+                  </p>
+                ) : (
+                  <ul className="ac-attention">
+                    {!registrationOpen && (
+                      <AttentionRow n="Off" title="Registration is closed" note="New students cannot sign up until you reopen it." action="Open settings" onAction={() => setTab('settings')} />
+                    )}
+                    {stale.length > 0 && (
+                      <AttentionRow
+                        n={stale.length}
+                        title={`Waiting more than ${STALE_DAYS} days for the coordinator`}
+                        note={`Oldest: ${stale[0].reference_number}, ${daysSince(stale[0].updated_at)} days.`}
+                        action="See pipeline"
+                        onAction={() => document.getElementById('ac-pipeline')?.scrollIntoView({ behavior: 'smooth' })}
+                      />
+                    )}
+                    {pending.length > 0 && (
+                      <AttentionRow n={pending.length} title="Sign-ups waiting for their email code" note="Unverified sign-ups are removed after 24 hours." action="Review" onAction={() => openPeople('pending')} />
+                    )}
+                    {withoutAuthenticator.length > 0 && (
+                      <AttentionRow
+                        n={withoutAuthenticator.length}
+                        title="Accounts without an authenticator"
+                        note="They are asked to set one up at their next sign-in and see no patent records until then."
+                        action="Review"
+                        onAction={() => openPeople('no_authenticator')}
+                      />
+                    )}
+                    {suspended.length > 0 && (
+                      <AttentionRow n={suspended.length} title="Suspended accounts" note="They cannot sign in until reactivated." action="Review" onAction={() => openPeople('suspended')} />
+                    )}
+                  </ul>
+                )}
+              </section>
+
+              <section className="ac-panel" aria-labelledby="ac-people-title">
+                <div className="ac-panel-head">
+                  <h2 id="ac-people-title">Accounts</h2>
+                  <button type="button" className="ac-link" onClick={() => openPeople('all')}>
+                    Open people
+                  </button>
+                </div>
+                <div className="ac-panel-body">
+                  <dl className="ac-facts">
+                    <dt>Students</dt>
+                    <dd>{roleCount('student')}</dd>
+                    <dt>Coordinators</dt>
+                    <dd>{roleCount('admin')}</dd>
+                    <dt>Super admins</dt>
+                    <dd>{roleCount('super_admin')}</dd>
+                    <dt>Waiting for email code</dt>
+                    <dd>{pending.length}</dd>
+                  </dl>
+                </div>
+              </section>
             </div>
-          </div>
 
-          {/* Department Breakdown */}
-          <div className="card" style={{ padding: '24px', borderRadius: '10px' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 4px' }}>
-              Disclosures by Academic Department
-            </h3>
-            <p style={{ margin: '0 0 20px', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-              Breakdown of research filings across academic disciplines in Manipal University Jaipur.
-            </p>
+            <section className="ac-panel" id="ac-pipeline" aria-labelledby="ac-pipeline-title">
+              <div className="ac-panel-head">
+                <h2 id="ac-pipeline-title">Pipeline</h2>
+                <p>{pipeline.length} applications. Stages and dates only; disclosure content is never shown here.</p>
+              </div>
+              <div className="ac-panel-body">
+                {pipeline.length === 0 ? (
+                  <p className="ac-muted" style={{ margin: 0 }}>
+                    No applications yet. Stages appear here as students start drafts.
+                  </p>
+                ) : (
+                  <>
+                    <div className="ac-bar" role="img" aria-label={STAGES.map((s) => `${s.label}: ${pipeline.filter((a) => a.status === s.status).length}`).join(', ')}>
+                      {STAGES.map((s) => {
+                        const n = pipeline.filter((a) => a.status === s.status).length;
+                        return n ? <span key={s.status} style={{ width: `${(n / pipeline.length) * 100}%`, background: s.color }} /> : null;
+                      })}
+                    </div>
+                    <ul className="ac-legend">
+                      {STAGES.map((s) => (
+                        <li key={s.status}>
+                          <i style={{ background: s.color }} aria-hidden="true" />
+                          {s.label}
+                          <b>{pipeline.filter((a) => a.status === s.status).length}</b>
+                        </li>
+                      ))}
+                    </ul>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {Object.keys(deptCounts).length === 0 ? (
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No department statistics recorded yet.</div>
-              ) : (
-                Object.entries(deptCounts).map(([dept, count]: [string, any]) => {
-                  const pct = totalApplications > 0 ? Math.round((count / totalApplications) * 100) : 0;
-                  return (
-                    <div key={dept}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '4px' }}>
-                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{dept}</span>
-                        <span style={{ color: 'var(--text-muted)' }}>{count} application{count > 1 ? 's' : ''} ({pct}%)</span>
+                    <div className="ac-split">
+                      <div>
+                        <h3>By department</h3>
+                        <table className="ac-table ac-compact">
+                          <tbody>
+                            {byDepartment.map(([dept, n]) => (
+                              <tr key={dept}>
+                                <td>{dept}</td>
+                                <td className="ac-num">{n}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
-                      <div style={{ width: '100%', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
-                        <div style={{ width: `${pct}%`, height: '100%', backgroundColor: '#2563eb', borderRadius: '4px' }} />
+                      <div>
+                        <h3>Waiting longest for the coordinator</h3>
+                        {waitingLongest.length === 0 ? (
+                          <p className="ac-muted" style={{ margin: 0 }}>The coordinator queue is empty.</p>
+                        ) : (
+                          <table className="ac-table ac-compact">
+                            <tbody>
+                              {waitingLongest.map((a) => (
+                                <tr key={a.id}>
+                                  <td>
+                                    <strong style={{ color: 'var(--text-primary)' }}>{a.reference_number}</strong>
+                                    <div className="ac-muted" style={{ fontSize: '0.8125rem' }}>
+                                      {a.applicant_name} · {STAGES.find((s) => s.status === a.status)?.label}
+                                    </div>
+                                  </td>
+                                  <td className="ac-num">
+                                    <span className={`ac-tag${daysSince(a.updated_at) >= STALE_DAYS ? ' ac-tag-warn' : ''}`}>
+                                      {daysSince(a.updated_at)} d
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
                       </div>
                     </div>
-                  );
-                })
-              )}
+                  </>
+                )}
+              </div>
+            </section>
+          </>
+        )}
+
+        {tab === 'people' && (
+          <section className="ac-panel">
+            <div className="ac-toolbar">
+              <label htmlFor="ac-search" className="ac-sr">
+                Search people
+              </label>
+              <input
+                id="ac-search"
+                type="search"
+                className="form-control"
+                placeholder="Name, email, registration no."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              <div className="ac-seg" role="group" aria-label="Filter people">
+                {(
+                  [
+                    ['all', 'Everyone'],
+                    ['staff', 'Staff'],
+                    ['pending', 'Waiting for code'],
+                    ['no_authenticator', 'No authenticator'],
+                    ['suspended', 'Suspended'],
+                  ] as [PeopleFilter, string][]
+                ).map(([id, label]) => (
+                  <button key={id} type="button" aria-pressed={filter === id} onClick={() => setFilter(id)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: Process Supervision Log */}
-      {activeTab === 'process' && (
-        <div className="card" style={{ borderRadius: '10px', overflow: 'hidden' }}>
-          <div className="card-header" style={{ padding: '16px 20px' }}>
-            <h3 className="card-title" style={{ fontSize: '1.0625rem' }}>
-              Statutory Application Processing Docket
-            </h3>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              Process tracking without trade-secret or patent specification exposure
-            </span>
-          </div>
-
-          <div className="card-body" style={{ padding: 0 }}>
-            <div className="table-responsive">
-              <table className="table" style={{ margin: 0, width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border-medium)' }}>
-                    <th style={{ padding: '12px 18px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Reference Number</th>
-                    <th style={{ padding: '12px 18px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Applicant Name</th>
-                    <th style={{ padding: '12px 18px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Department</th>
-                    <th style={{ padding: '12px 18px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Lifecycle Stage</th>
-                    <th style={{ padding: '12px 18px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Version</th>
-                    <th style={{ padding: '12px 18px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Submitted At</th>
-                    <th style={{ padding: '12px 18px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Last Update</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {processItems.map((item) => (
-                    <tr key={item.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                      <td style={{ padding: '14px 18px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#2563eb' }}>
-                        {item.reference_number}
-                      </td>
-                      <td style={{ padding: '14px 18px', fontWeight: 600 }}>{item.applicant_name}</td>
-                      <td style={{ padding: '14px 18px', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                        {item.applicant_department}
-                      </td>
-                      <td style={{ padding: '14px 18px' }}>
-                        <span className={`badge ${getStatusBadgeClass(item.status)}`} style={{ padding: '3px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>
-                          {getStatusDisplayName(item.status)}
-                        </span>
-                      </td>
-                      <td style={{ padding: '14px 18px', fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>
-                        V{item.current_version}
-                      </td>
-                      <td style={{ padding: '14px 18px', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-                        {item.submitted_at ? new Date(item.submitted_at).toLocaleDateString() : 'Draft Mode'}
-                      </td>
-                      <td style={{ padding: '14px 18px', fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'right' }}>
-                        {new Date(item.updated_at).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
-                  {processItems.length === 0 && (
+            {visiblePeople.length === 0 ? (
+              <p className="ac-empty ac-muted">{loading ? 'Loading accounts…' : 'No accounts match this view.'}</p>
+            ) : (
+              <div className="ac-table-wrap">
+                <table className="ac-table">
+                  <thead>
                     <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
-                        No active patent disclosures registered in the university system.
-                      </td>
+                      <th scope="col">Person</th>
+                      <th scope="col">Role</th>
+                      <th scope="col">Sign-in security</th>
+                      <th scope="col">Last sign-in</th>
+                      <th scope="col">Joined</th>
+                      <th scope="col">
+                        <span className="ac-sr">Actions</span>
+                      </th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
+                  </thead>
+                  <tbody>
+                    {visiblePeople.map((u) => (
+                      <tr key={u.id}>
+                        <td className="ac-person">
+                          <strong>{u.full_name ?? 'Not verified yet'}</strong>
+                          <span>{u.email}</span>
+                        </td>
+                        <td>{u.role ? <span className={`ac-tag${u.role !== 'student' ? ' ac-tag-role' : ''}`}>{ROLE_LABEL[u.role]}</span> : <span className="ac-muted">None</span>}</td>
+                        <td>
+                          <SecurityTags user={u} />
+                        </td>
+                        <td className="ac-muted">{relative(u.last_sign_in_at)}</td>
+                        <td className="ac-muted">{relative(u.created_at)}</td>
+                        <td className="ac-num">
+                          <button type="button" className="ac-row-btn" onClick={() => setSelectedId(u.id)} aria-label={`Manage ${u.full_name ?? u.email}`}>
+                            Manage
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
 
-      {/* TAB 4: Infrastructure & Security Health */}
-      {activeTab === 'system' && (
-        <div className="grid-2" style={{ gap: '20px' }}>
-          <div className="card" style={{ padding: '24px', borderRadius: '10px' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Server size={18} color="#2563eb" />
-              Database &amp; Platform Infrastructure
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.8125rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
-                <span style={{ color: 'var(--text-muted)' }}>Host Institution</span>
-                <strong>{INSTITUTION.NAME}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
-                <span style={{ color: 'var(--text-muted)' }}>Patent Directorate</span>
-                <strong>{INSTITUTION.DEPARTMENTS.IPR_CELL}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
-                <span style={{ color: 'var(--text-muted)' }}>Patent Coordinator</span>
-                <strong>{COORDINATOR.FULL_NAME}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
-                <span style={{ color: 'var(--text-muted)' }}>Supabase Project</span>
-                <code style={{ backgroundColor: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>cwjnujgzsuphfkbybvoz</code>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--border-light)' }}>
-                <span style={{ color: 'var(--text-muted)' }}>Private Storage Bucket</span>
-                <code style={{ backgroundColor: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>patent-documents (25MB Max)</code>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-muted)' }}>Active Governance Mode</span>
-                <span style={{ color: '#16a34a', fontWeight: 600 }}>Master Super Admin (IT Governance)</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="card" style={{ padding: '24px', borderRadius: '10px' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Shield size={18} color="#16a34a" />
-              Row Level Security (RLS) Policy Status
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.8125rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#16a34a' }}>
-                <CheckCircle2 size={16} />
-                <span><code>profiles</code>: Users read own; Admin/Super Admin reads all.</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#16a34a' }}>
-                <CheckCircle2 size={16} />
-                <span><code>applications</code>: Students read own; Coordinator reads all; Super Admin shielded.</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#16a34a' }}>
-                <CheckCircle2 size={16} />
-                <span><code>applications UPDATE</code>: Explicit WITH CHECK transitions verified.</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#16a34a' }}>
-                <CheckCircle2 size={16} />
-                <span><code>storage.objects</code>: Private patent-documents bucket isolated.</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#16a34a' }}>
-                <CheckCircle2 size={16} />
-                <span><code>application_status_history</code>: Immutable audit trigger logging.</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Role Update Modal */}
-      {roleModalUser && (
-        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-          <div className="card" style={{ maxWidth: '440px', width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.2)', borderRadius: '10px' }}>
-            <div className="card-header" style={{ padding: '16px 20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#7c3aed' }}>
-                <UserCheck size={18} />
-                <h3 className="card-title" style={{ fontSize: '1.0625rem', margin: 0 }}>
-                  Modify User Authorization Role
-                </h3>
-              </div>
-            </div>
-            <form onSubmit={handleUpdateRole}>
-              <div className="card-body" style={{ padding: '20px' }}>
-                <div style={{ marginBottom: '14px', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-                  Changing authorization role for <strong>{roleModalUser.full_name}</strong> (<code>{roleModalUser.university_email}</code>).
-                </div>
-
-                {roleFeedback && (
-                  <div className={`alert ${roleFeedback.type === 'success' ? 'alert-success' : 'alert-danger'}`} style={{ marginBottom: '16px' }}>
-                    {roleFeedback.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-                    <div>{roleFeedback.text}</div>
-                  </div>
-                )}
-
-                <div className="form-group">
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '0.8125rem' }}>
-                    Assign Role <span className="required">*</span>
-                  </label>
-                  <select
-                    className="form-control"
-                    value={selectedRole}
-                    onChange={(e) => setSelectedRole(e.target.value as AppRole)}
-                    required
-                  >
-                    <option value="student">Student Applicant (Disclosures &amp; Submissions)</option>
-                    <option value="admin">IPR Coordinator / Admin (Screening &amp; Clearances)</option>
-                    <option value="super_admin">Master Super Admin (IT Governance)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="card-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '14px 20px' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRoleModalUser(null);
-                    setRoleFeedback(null);
-                  }}
-                  className="btn btn-outline"
-                  disabled={isUpdatingRole}
-                >
-                  Cancel
+        {tab === 'activity' && (
+          <section className="ac-panel">
+            <div className="ac-toolbar">
+              <div className="ac-seg" role="group" aria-label="Activity source">
+                <button type="button" aria-pressed={activityView === 'admin'} onClick={() => setActivityView('admin')}>
+                  Admin actions
                 </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  style={{ backgroundColor: '#7c3aed', borderColor: '#7c3aed' }}
-                  disabled={isUpdatingRole}
-                >
-                  {isUpdatingRole ? 'Updating Role...' : 'Save Role'}
+                <button type="button" aria-pressed={activityView === 'auth'} onClick={() => setActivityView('auth')}>
+                  Sign-in events
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Password Reset Modal */}
-      {resetModalUser && (
-        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-          <div className="card" style={{ maxWidth: '440px', width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.2)', borderRadius: '10px' }}>
-            <div className="card-header" style={{ padding: '16px 20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-primary)' }}>
-                <KeyRound size={18} />
-                <h3 className="card-title" style={{ fontSize: '1.0625rem', margin: 0 }}>
-                  Reset User Password
-                </h3>
-              </div>
+              <span className="ac-muted" style={{ fontSize: '0.8125rem' }}>
+                {activityView === 'admin' ? 'Every change made from this console, newest first. Entries cannot be edited or deleted.' : 'Sign-ups, sign-ins, code emails and authenticator events from Supabase Auth.'}
+              </span>
             </div>
-            <form onSubmit={handleResetPassword}>
-              <div className="card-body" style={{ padding: '20px' }}>
-                <div style={{ marginBottom: '14px', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-                  Setting new access password for <strong>{resetModalUser.full_name}</strong> (<code>{resetModalUser.university_email}</code>).
+            {activityView === 'admin' ? (
+              audit.length === 0 ? (
+                <p className="ac-empty ac-muted">No admin actions yet. Role changes, resets and suspensions will be listed here.</p>
+              ) : (
+                <div className="ac-table-wrap">
+                  <table className="ac-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">When</th>
+                        <th scope="col">By</th>
+                        <th scope="col">Action</th>
+                        <th scope="col">Account</th>
+                        <th scope="col">Details</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {audit.map((e) => (
+                        <tr key={e.id}>
+                          <td className="ac-muted" style={{ whiteSpace: 'nowrap' }}>{stamp(e.created_at)}</td>
+                          <td>{e.actor_email ?? 'SQL editor'}</td>
+                          <td style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{ACTION_LABEL[e.action] ?? e.action}</td>
+                          <td>{e.target_email ?? '—'}</td>
+                          <td className="ac-muted">{describeDetails(e)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-
-                {modalFeedback && (
-                  <div className={`alert ${modalFeedback.type === 'success' ? 'alert-success' : 'alert-danger'}`} style={{ marginBottom: '16px' }}>
-                    {modalFeedback.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-                    <div>{modalFeedback.text}</div>
-                  </div>
-                )}
-
-                <div className="form-group">
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '0.8125rem' }}>
-                    New Password (Min 6 characters) <span className="required">*</span>
-                  </label>
-                  <input
-                    type="password"
-                    className="form-control"
-                    placeholder="Enter new password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    required
-                    autoFocus
-                  />
-                </div>
+              )
+            ) : authEvents.length === 0 ? (
+              <p className="ac-empty ac-muted">No sign-in events to show. They come from the live Supabase project only.</p>
+            ) : (
+              <div className="ac-table-wrap">
+                <table className="ac-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">When</th>
+                      <th scope="col">Event</th>
+                      <th scope="col">Account</th>
+                      <th scope="col">IP address</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {authEvents.map((e, i) => (
+                      <tr key={`${e.created_at}-${i}`}>
+                        <td className="ac-muted" style={{ whiteSpace: 'nowrap' }}>{stamp(e.created_at)}</td>
+                        <td style={{ color: 'var(--text-primary)' }}>{e.action.replace(/_/g, ' ')}</td>
+                        <td>{e.actor ?? '—'}</td>
+                        <td className="ac-muted">{e.ip_address || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
+            )}
+          </section>
+        )}
 
-              <div className="card-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '14px 20px' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setResetModalUser(null);
-                    setModalFeedback(null);
-                  }}
-                  className="btn btn-outline"
-                  disabled={isResetting}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={isResetting || !newPassword}
-                >
-                  {isResetting ? 'Updating...' : 'Set Password'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        {tab === 'settings' && (
+          <RegistrationSetting
+            open={registrationOpen}
+            onChanged={(open) => {
+              setRegistrationOpen(open);
+              void load();
+            }}
+          />
+        )}
+      </div>
+
+      {selected && (
+        <AccountDrawer
+          user={selected}
+          isSelf={selected.id === currentUser?.id}
+          onClose={() => setSelectedId(null)}
+          onChanged={() => void load()}
+        />
       )}
     </div>
+  );
+};
+
+const AttentionRow: React.FC<{ n: number | string; title: string; note: string; action: string; onAction: () => void }> = ({
+  n,
+  title,
+  note,
+  action,
+  onAction,
+}) => (
+  <li>
+    <span className="ac-attention-n">{n}</span>
+    <div>
+      <strong>{title}</strong>
+      <span>{note}</span>
+    </div>
+    <button type="button" className="ac-link" onClick={onAction}>
+      {action}
+    </button>
+  </li>
+);
+
+const SecurityTags: React.FC<{ user: DirectoryUser }> = ({ user }) => (
+  <div className="ac-tags">
+    {user.suspended && <span className="ac-tag ac-tag-bad">Suspended</span>}
+    {user.email_confirmed_at ? <span className="ac-tag ac-tag-ok">Email verified</span> : <span className="ac-tag ac-tag-warn">Waiting for code</span>}
+    {user.role &&
+      (user.has_authenticator ? <span className="ac-tag ac-tag-ok">Authenticator</span> : <span className="ac-tag ac-tag-warn">No authenticator</span>)}
+  </div>
+);
+
+const RegistrationSetting: React.FC<{ open: boolean; onChanged: (open: boolean) => void }> = ({ open, onChanged }) => {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const apply = async (next: boolean) => {
+    setBusy(true);
+    setError(null);
+    const r = await setRegistrationEnabled(next);
+    setBusy(false);
+    setConfirming(false);
+    if (r.success) onChanged(next);
+    else setError(r.error ?? 'The setting could not be changed.');
+  };
+
+  return (
+    <section className="ac-panel">
+      <div className="ac-panel-body">
+        <div className="ac-setting">
+          <div>
+            <h3 id="ac-registration-label">Student registration</h3>
+            <p>
+              {open
+                ? 'Open. Anyone with an @' + INSTITUTION.DOMAIN + ' address can sign up and verify with an emailed code.'
+                : 'Closed. New sign-ups are refused; existing accounts keep signing in.'}{' '}
+              Use this to stop a wave of fake sign-ups or while email delivery is down.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            className="ac-switch"
+            aria-checked={open}
+            aria-labelledby="ac-registration-label"
+            disabled={busy}
+            onClick={() => (open ? setConfirming(true) : void apply(true))}
+          />
+        </div>
+        {confirming && (
+          <div className="ac-confirm" role="alertdialog" aria-label="Confirm closing registration">
+            Close registration? Students who have not signed up yet will see "Registration is temporarily unavailable".
+            <div className="ac-inline">
+              <button type="button" className="btn btn-danger btn-sm" onClick={() => void apply(false)} disabled={busy}>
+                Close registration
+              </button>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setConfirming(false)}>
+                Keep it open
+              </button>
+            </div>
+          </div>
+        )}
+        {error && <p className="ac-feedback ac-feedback-bad" role="alert">{error}</p>}
+      </div>
+    </section>
+  );
+};
+
+type Feedback = { ok: boolean; text: string } | null;
+
+const AccountDrawer: React.FC<{ user: DirectoryUser; isSelf: boolean; onClose: () => void; onChanged: () => void }> = ({
+  user,
+  isSelf,
+  onClose,
+  onChanged,
+}) => {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const [role, setRole] = useState<AppRole>(user.role ?? 'student');
+  const [password, setPassword] = useState('');
+  const [reason, setReason] = useState('');
+  const [confirm, setConfirm] = useState<AccountAction | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<Record<string, Feedback>>({});
+
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const done = (key: string, ok: boolean, text: string) => {
+    setFeedback((f) => ({ ...f, [key]: { ok, text } }));
+    if (ok) onChanged();
+  };
+
+  const saveRole = async () => {
+    setBusy(true);
+    const r = await superAdminUpdateUserRole(user.id, role);
+    setBusy(false);
+    done('role', r.success, r.success ? `Role changed to ${ROLE_LABEL[role]}.` : r.error ?? 'The role could not be changed.');
+  };
+
+  const savePassword = async () => {
+    if (password.length < 6) {
+      done('password', false, 'Use at least 6 characters.');
+      return;
+    }
+    setBusy(true);
+    const r = await superAdminResetUserPassword(user.email, password);
+    setBusy(false);
+    if (r.success) setPassword('');
+    done('password', r.success, r.success ? 'New password set. Share it with the person privately.' : r.error ?? 'The password could not be set.');
+  };
+
+  const run = async (action: AccountAction) => {
+    setBusy(true);
+    const r = await runAccountAction(action, user, reason);
+    setBusy(false);
+    setConfirm(null);
+    if (r.success) setReason('');
+    const text: Record<AccountAction, string> = {
+      reset_authenticator: 'Authenticator removed. They set up a new one at their next sign-in.',
+      sign_out: 'All sessions ended.',
+      suspend: 'Account suspended and signed out.',
+      reactivate: 'Account reactivated.',
+    };
+    done(action, r.success, r.success ? text[action] : r.error ?? 'That did not work. Refresh and try again.');
+  };
+
+  const Feedback = ({ k }: { k: string }) =>
+    feedback[k] ? (
+      <p className={`ac-feedback ${feedback[k]!.ok ? 'ac-feedback-ok' : 'ac-feedback-bad'}`} role={feedback[k]!.ok ? 'status' : 'alert'}>
+        {feedback[k]!.text}
+      </p>
+    ) : null;
+
+  const Confirm = ({ action, text, label }: { action: AccountAction; text: string; label: string }) =>
+    confirm === action ? (
+      <div className="ac-confirm">
+        {text}
+        <div className="ac-inline">
+          <button type="button" className="btn btn-danger btn-sm" onClick={() => void run(action)} disabled={busy}>
+            {label}
+          </button>
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => setConfirm(null)}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    ) : null;
+
+  return (
+    <>
+      <div className="ac-scrim" onClick={onClose} aria-hidden="true" />
+      <aside className="ac-drawer" role="dialog" aria-modal="true" aria-labelledby="ac-drawer-title">
+        <div className="ac-drawer-head">
+          <div>
+            <h2 id="ac-drawer-title">{user.full_name ?? 'Unverified sign-up'}</h2>
+            <p>{user.email}</p>
+            <SecurityTags user={user} />
+          </div>
+          <button ref={closeRef} type="button" className="ac-close" onClick={onClose} aria-label="Close">
+            <X size={20} aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="ac-drawer-body">
+          <section className="ac-section">
+            <dl className="ac-kv">
+              <dt>Role</dt>
+              <dd>{user.role ? ROLE_LABEL[user.role] : 'None until the email code is entered'}</dd>
+              <dt>Department</dt>
+              <dd>{user.department ?? '—'}</dd>
+              <dt>Registration no.</dt>
+              <dd>{user.registration_number ?? '—'}</dd>
+              <dt>Joined</dt>
+              <dd>{stamp(user.created_at)}</dd>
+              <dt>Last sign-in</dt>
+              <dd>{user.last_sign_in_at ? stamp(user.last_sign_in_at) : 'Never'}</dd>
+            </dl>
+          </section>
+
+          {user.role ? (
+            <>
+              <section className="ac-section">
+                <h3>Role</h3>
+                <p>Coordinators review applications. Super admins run this console.</p>
+                <div className="ac-inline">
+                  <label htmlFor="ac-role" className="ac-sr">
+                    Role
+                  </label>
+                  <select id="ac-role" className="form-control" value={role} onChange={(e) => setRole(e.target.value as AppRole)} disabled={isSelf}>
+                    <option value="student">Student</option>
+                    <option value="admin">Coordinator</option>
+                    <option value="super_admin">Super admin</option>
+                  </select>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => void saveRole()} disabled={busy || isSelf || role === user.role}>
+                    Save role
+                  </button>
+                </div>
+                {isSelf && <p className="ac-feedback ac-muted">Another super admin must change your own role.</p>}
+                <Feedback k="role" />
+              </section>
+
+              <section className="ac-section">
+                <h3>Password</h3>
+                <p>For someone who cannot use the emailed reset. They should change it after signing in.</p>
+                <div className="ac-inline">
+                  <label htmlFor="ac-password" className="ac-sr">
+                    New password
+                  </label>
+                  <input
+                    id="ac-password"
+                    type="text"
+                    className="form-control"
+                    placeholder="New password (6+ characters)"
+                    autoComplete="off"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => void savePassword()} disabled={busy || !password}>
+                    Set password
+                  </button>
+                </div>
+                <Feedback k="password" />
+              </section>
+
+              <section className="ac-section">
+                <h3>Authenticator</h3>
+                <p>{user.has_authenticator ? 'For a lost or replaced phone. Removes the app and signs them out.' : 'No authenticator set up yet; they will be asked at their next sign-in.'}</p>
+                <button
+                  type="button"
+                  className="ac-row-btn ac-row-btn-danger"
+                  onClick={() => setConfirm('reset_authenticator')}
+                  disabled={busy || isSelf || !user.has_authenticator}
+                >
+                  Reset authenticator
+                </button>
+                {isSelf && <p className="ac-feedback ac-muted">Another super admin must reset your own authenticator.</p>}
+                <Confirm action="reset_authenticator" label="Reset authenticator" text="Only do this after confirming the person's identity, for example in person or by a call to a known number." />
+                <Feedback k="reset_authenticator" />
+              </section>
+
+              <section className="ac-section">
+                <h3>Sessions</h3>
+                <p>Ends sign-ins on every device. Open tabs lose access within the hour.</p>
+                <button type="button" className="ac-row-btn" onClick={() => void run('sign_out')} disabled={busy}>
+                  Sign out everywhere
+                </button>
+                <Feedback k="sign_out" />
+              </section>
+            </>
+          ) : (
+            <section className="ac-section">
+              <h3>Waiting for the email code</h3>
+              <p>This person signed up but has not entered the code from their inbox. Unverified sign-ups are removed after 24 hours.</p>
+            </section>
+          )}
+
+          <section className="ac-section">
+            <h3>{user.suspended ? 'Suspended' : 'Suspend account'}</h3>
+            {user.suspended ? (
+              <>
+                <p>This account cannot sign in.</p>
+                <button type="button" className="ac-row-btn" onClick={() => void run('reactivate')} disabled={busy}>
+                  Reactivate account
+                </button>
+                <Feedback k="suspend" />
+                <Feedback k="reactivate" />
+              </>
+            ) : (
+              <>
+                <p>Blocks sign-in and ends every session. Their applications and data stay as they are.</p>
+                <div className="ac-inline">
+                  <label htmlFor="ac-reason" className="ac-sr">
+                    Reason
+                  </label>
+                  <input
+                    id="ac-reason"
+                    className="form-control"
+                    placeholder="Reason, kept in the activity log"
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    disabled={isSelf || user.role === 'super_admin'}
+                  />
+                  <button
+                    type="button"
+                    className="ac-row-btn ac-row-btn-danger"
+                    onClick={() => setConfirm('suspend')}
+                    disabled={busy || isSelf || user.role === 'super_admin'}
+                  >
+                    Suspend
+                  </button>
+                </div>
+                {user.role === 'super_admin' && !isSelf && <p className="ac-feedback ac-muted">Change the role first: super admins cannot be suspended.</p>}
+                <Confirm action="suspend" label="Suspend account" text={`Suspend ${user.full_name ?? user.email}? They are signed out now and cannot sign in until reactivated.`} />
+                <Feedback k="reactivate" />
+              </>
+            )}
+          </section>
+        </div>
+      </aside>
+    </>
   );
 };
 
