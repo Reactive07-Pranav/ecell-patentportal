@@ -153,7 +153,7 @@ export const CorrectionPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="container" style={{ padding: '60px 0', textAlign: 'center' }}>
+      <div className="container" style={{ paddingBlock: '60px', textAlign: 'center' }}>
         <p>Loading correction workspace...</p>
       </div>
     );

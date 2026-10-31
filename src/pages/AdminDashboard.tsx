@@ -112,7 +112,7 @@ export const AdminDashboard: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="container" style={{ padding: '80px 0', textAlign: 'center' }}>
+      <div className="container" style={{ paddingBlock: '80px', textAlign: 'center' }}>
         <div className="spinner" style={{ margin: '0 auto 16px' }} />
         <p style={{ color: '#6385B2' }}>Loading patent screening registry...</p>
       </div>
@@ -120,7 +120,7 @@ export const AdminDashboard: React.FC = () => {
   }
 
   return (
-    <div className="container" style={{ padding: '36px 0 60px' }}>
+    <div className="container" style={{ paddingBlock: '36px 60px' }}>
       {/* Coordinator Header */}
       <div style={{ marginBottom: '36px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>

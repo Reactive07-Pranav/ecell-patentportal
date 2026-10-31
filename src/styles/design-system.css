@@ -191,7 +191,10 @@ a:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 72px;
+  /* min-height, not height: the signed-in nav wraps to a second row at mid widths */
+  min-height: 72px;
+  flex-wrap: wrap;
+  gap: var(--space-3);
 }
 
 .brand-wrapper {
@@ -240,6 +243,16 @@ a:hover {
   display: flex;
   align-items: center;
   gap: var(--space-6);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+/* Header actions keep their labels on one line instead of squeezing into tall pills */
+.nav-links a,
+.nav-links button,
+.nav-links div {
+  white-space: nowrap;
 }
 
 .nav-item {
@@ -349,11 +362,22 @@ a:hover {
   --btn-cut-bg: #FAF7EE;
 }
 
-.card, .editorial-card, [style*="#FFFFFF"], [style*="#ffffff"] {
+/* The cut mask is painted in the colour behind the button, so every surface a cut button
+   sits on sets it. Browsers serialise inline colours as rgb(), never hex. */
+.card,
+.editorial-card,
+[style*="background-color: rgb(255, 255, 255)"]:not(.btn),
+[style*="background: rgb(255, 255, 255)"]:not(.btn) {
   --btn-cut-bg: #FFFFFF;
 }
 
-.site-footer, [style*="#204E96"] {
+.card-footer {
+  --btn-cut-bg: var(--bg-tertiary);
+}
+
+.site-footer,
+[style*="background-color: rgb(32, 78, 150)"]:not(.btn),
+[style*="background: rgb(32, 78, 150)"]:not(.btn) {
   --btn-cut-bg: #204E96;
 }
 
@@ -369,8 +393,9 @@ button.ecell-btn {
   justify-content: center;
   gap: 8px;
   position: relative !important;
-  padding: 0.7em 2.2em !important;
-  font-size: 16px !important;
+  /* Defaults only: a button's own inline padding / font-size must still apply */
+  padding: 0.7em 2.2em;
+  font-size: 16px;
   background: transparent !important;
   cursor: pointer !important;
   user-select: none !important;
@@ -386,13 +411,13 @@ button.ecell-btn {
   box-sizing: border-box !important;
 }
 
-/* Button Span Border */
-.btn-primary span,
-button.btn-primary span,
-a.btn-primary span,
-.btn-cut span,
-button.btn-cut span,
-button.ecell-btn span {
+/* Button Span Border: only the empty decorative <span />; a label <span> stays in the flow */
+.btn-primary > span:empty,
+button.btn-primary > span:empty,
+a.btn-primary > span:empty,
+.btn-cut > span:empty,
+button.btn-cut > span:empty,
+button.ecell-btn > span:empty {
   position: absolute;
   left: 0;
   top: 0;
@@ -403,15 +428,16 @@ button.ecell-btn span {
   border: 4px solid var(--ecell-blue);
   box-sizing: border-box;
   pointer-events: none;
+  transition: background-color 0.3s ease;
 }
 
 /* Diagonal Cut Mask */
-.btn-primary span::before,
-button.btn-primary span::before,
-a.btn-primary span::before,
-.btn-cut span::before,
-button.btn-cut span::before,
-button.ecell-btn span::before {
+.btn-primary > span:empty::before,
+button.btn-primary > span:empty::before,
+a.btn-primary > span:empty::before,
+.btn-cut > span:empty::before,
+button.btn-cut > span:empty::before,
+button.ecell-btn > span:empty::before {
   content: "";
   display: block;
   position: absolute;
@@ -426,15 +452,36 @@ button.ecell-btn span::before {
 }
 
 /* Hover: Rotate to -90deg, expand to 100% width, fill with E-Cell blue */
-.btn-primary:hover span::before,
-button.btn-primary:hover span::before,
-a.btn-primary:hover span::before,
-.btn-cut:hover span::before,
-button.btn-cut:hover span::before,
-button.ecell-btn:hover span::before {
+.btn-primary:hover > span:empty::before,
+button.btn-primary:hover > span:empty::before,
+a.btn-primary:hover > span:empty::before,
+.btn-cut:hover > span:empty::before,
+button.btn-cut:hover > span:empty::before,
+button.ecell-btn:hover > span:empty::before {
   transform: translate(-50%, -50%) rotate(-90deg);
   width: 100%;
   background: var(--ecell-blue);
+}
+
+/* The rotated band is only 5x the button's height across, so on wide buttons it left the ends
+   unfilled and the white hover label vanished there. The border layer fills the whole button. */
+.btn-primary:hover > span:empty,
+button.btn-primary:hover > span:empty,
+a.btn-primary:hover > span:empty,
+.btn-cut:hover > span:empty,
+button.btn-cut:hover > span:empty,
+button.ecell-btn:hover > span:empty,
+.btn-primary:not(:has(> span:empty)):hover::before,
+.btn-cut:not(:has(> span:empty)):hover::before {
+  background-color: var(--ecell-blue);
+}
+
+.btn-primary:active > span:empty,
+.btn-cut:active > span:empty,
+button.ecell-btn:active > span:empty,
+.btn-primary:not(:has(> span:empty)):active::before,
+.btn-cut:not(:has(> span:empty)):active::before {
+  background-color: var(--ecell-blue-dark);
 }
 
 .btn-primary:hover,
@@ -447,20 +494,20 @@ button.ecell-btn:hover {
 }
 
 /* Active pressed state */
-.btn-primary:active span::before,
-button.btn-primary:active span::before,
-a.btn-primary:active span::before,
-.btn-cut:active span::before,
-button.btn-cut:active span::before,
-button.ecell-btn:active span::before {
+.btn-primary:active > span:empty::before,
+button.btn-primary:active > span:empty::before,
+a.btn-primary:active > span:empty::before,
+.btn-cut:active > span:empty::before,
+button.btn-cut:active > span:empty::before,
+button.ecell-btn:active > span:empty::before {
   background: var(--ecell-blue-dark);
 }
 
-/* Fallback for buttons without an explicit span element */
-.btn-primary:not(:has(> span))::before,
-button.btn-primary:not(:has(> span))::before,
-a.btn-primary:not(:has(> span))::before,
-.btn-cut:not(:has(> span))::before {
+/* Fallback for buttons without the decorative <span /> */
+.btn-primary:not(:has(> span:empty))::before,
+button.btn-primary:not(:has(> span:empty))::before,
+a.btn-primary:not(:has(> span:empty))::before,
+.btn-cut:not(:has(> span:empty))::before {
   content: "";
   position: absolute;
   left: 0;
@@ -472,12 +519,13 @@ a.btn-primary:not(:has(> span))::before,
   border: 4px solid var(--ecell-blue);
   box-sizing: border-box;
   pointer-events: none;
+  transition: background-color 0.3s ease;
 }
 
-.btn-primary:not(:has(> span))::after,
-button.btn-primary:not(:has(> span))::after,
-a.btn-primary:not(:has(> span))::after,
-.btn-cut:not(:has(> span))::after {
+.btn-primary:not(:has(> span:empty))::after,
+button.btn-primary:not(:has(> span:empty))::after,
+a.btn-primary:not(:has(> span:empty))::after,
+.btn-cut:not(:has(> span:empty))::after {
   content: "";
   display: block;
   position: absolute;
@@ -492,77 +540,19 @@ a.btn-primary:not(:has(> span))::after,
   pointer-events: none;
 }
 
-.btn-primary:not(:has(> span)):hover::after,
-button.btn-primary:not(:has(> span)):hover::after,
-a.btn-primary:not(:has(> span)):hover::after,
-.btn-cut:not(:has(> span)):hover::after {
+.btn-primary:not(:has(> span:empty)):hover::after,
+button.btn-primary:not(:has(> span:empty)):hover::after,
+a.btn-primary:not(:has(> span:empty)):hover::after,
+.btn-cut:not(:has(> span:empty)):hover::after {
   transform: translate(-50%, -50%) rotate(-90deg);
   width: 100%;
   background: var(--ecell-blue);
 }
 
-.btn-primary:not(:has(> span)):active::after,
-button.btn-primary:not(:has(> span)):active::after,
-a.btn-primary:not(:has(> span)):active::after,
-.btn-cut:not(:has(> span)):active::after {
-  background: var(--ecell-blue-dark);
-}
-
-/* Direct button support matching exact snippet provided */
-button:has(> span) {
-  border: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  padding: 0.7em 2.4em;
-  font-size: 18px;
-  background: transparent;
-  cursor: pointer;
-  user-select: none;
-  overflow: hidden;
-  color: var(--ecell-blue);
-  z-index: 1;
-  font-family: inherit;
-  font-weight: 500;
-  transition: color 0.3s ease;
-}
-
-button:has(> span) span {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 100%;
-  background: transparent;
-  z-index: -1;
-  border: 4px solid var(--ecell-blue);
-}
-
-button:has(> span) span::before {
-  content: "";
-  display: block;
-  position: absolute;
-  width: 8%;
-  height: 500%;
-  background: var(--btn-cut-bg, #FAF7EE);
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%) rotate(-60deg);
-  transition: all 0.3s ease;
-}
-
-button:has(> span):hover span::before {
-  transform: translate(-50%, -50%) rotate(-90deg);
-  width: 100%;
-  background: var(--ecell-blue);
-}
-
-button:has(> span):hover {
-  color: white;
-}
-
-button:has(> span):active span::before {
+.btn-primary:not(:has(> span:empty)):active::after,
+button.btn-primary:not(:has(> span:empty)):active::after,
+a.btn-primary:not(:has(> span:empty)):active::after,
+.btn-cut:not(:has(> span:empty)):active::after {
   background: var(--ecell-blue-dark);
 }
 
@@ -753,6 +743,13 @@ textarea.form-control {
   gap: var(--space-5);
 }
 
+/* Main column + sidebar; minmax(0, …) stops long content from widening the page */
+.grid-main-aside {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--space-6);
+}
+
 /* Institutional Tables */
 .table-responsive {
   width: 100%;
@@ -764,6 +761,11 @@ textarea.form-control {
   border-collapse: collapse;
   text-align: left;
   font-size: 0.875rem;
+}
+
+/* Wide tables scroll inside their card instead of widening the page on phones */
+.table-responsive {
+  overflow-x: auto;
 }
 
 .table th {
@@ -998,11 +1000,39 @@ textarea.form-control {
   .grid-2, .grid-3 {
     grid-template-columns: 1fr;
   }
+
+  .grid-main-aside {
+    grid-template-columns: minmax(0, 1fr);
+  }
   
   .header-inner {
     flex-direction: column;
     height: auto;
     padding: var(--space-4) 0;
     gap: var(--space-4);
+  }
+
+  .nav-links {
+    margin-left: 0;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .btn-primary,
+  button.btn-primary,
+  a.btn-primary,
+  .btn-cut,
+  button.btn-cut,
+  button.ecell-btn {
+    font-size: 14px;
+    /* Long labels ("Resubmit Application as Version 2") wrap instead of being clipped */
+    white-space: normal;
+    text-align: center;
+  }
+
+  /* The stacked header is ~20% of a phone screen; sticky, it hides the content scrolling under it */
+  .site-header {
+    position: static !important;
   }
 }

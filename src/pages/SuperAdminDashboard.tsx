@@ -174,7 +174,7 @@ export const SuperAdminDashboard: React.FC = () => {
   const deptCounts = telemetry?.applications_by_department || {};
 
   return (
-    <div className="container" style={{ padding: '28px 0 80px' }}>
+    <div className="container" style={{ paddingBlock: '28px 80px' }}>
       {/* Super Admin Supervision Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
         <div>
@@ -285,7 +285,7 @@ export const SuperAdminDashboard: React.FC = () => {
       </div>
 
       {/* Tab Navigation */}
-      <div style={{ display: 'flex', gap: '12px', borderBottom: '1px solid var(--border-light)', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', gap: '12px', borderBottom: '1px solid var(--border-light)', marginBottom: '24px', overflowX: 'auto' }}>
         <button
           type="button"
           onClick={() => setActiveTab('users')}

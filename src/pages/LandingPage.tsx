@@ -50,7 +50,7 @@ export const LandingPage: React.FC = () => {
   };
 
   return (
-    <div className="container" style={{ padding: '24px 0 60px' }}>
+    <div className="container" style={{ paddingBlock: '24px 60px' }}>
       {/* Institutional Pre-Screening Notice */}
       <div className="alert alert-info" style={{ marginBottom: '28px', backgroundColor: '#f0f9ff', borderColor: '#bae6fd' }}>
         <AlertCircle size={20} style={{ flexShrink: 0, marginTop: '2px', color: '#0284c7' }} />

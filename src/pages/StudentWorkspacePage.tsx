@@ -371,14 +371,14 @@ export const StudentWorkspacePage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="container" style={{ padding: '64px 0', textAlign: 'center' }}>
+      <div className="container" style={{ paddingBlock: '64px', textAlign: 'center' }}>
         <p style={{ color: 'var(--text-muted)' }}>Loading student workspace...</p>
       </div>
     );
   }
 
   return (
-    <div className="container" style={{ padding: '28px 0 60px' }}>
+    <div className="container" style={{ paddingBlock: '28px 60px' }}>
       {/* Institutional Applicant Dossier Bar */}
       {currentUser ? (
         <div
