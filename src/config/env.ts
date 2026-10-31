@@ -18,7 +18,8 @@ export const ENV = {
   STORAGE_BUCKET_DOCS: (import.meta.env.VITE_STORAGE_BUCKET_DOCS as string) || 'patent-documents',
   STORAGE_BUCKET_DRAWINGS: (import.meta.env.VITE_STORAGE_BUCKET_DRAWINGS as string) || 'patent-drawings',
   APP_ENV: (import.meta.env.VITE_APP_ENV as string) || (import.meta.env.MODE as string) || 'development',
-  ENABLE_MOCK_FALLBACK: import.meta.env.VITE_ENABLE_MOCK_FALLBACK !== 'false',
+  // Public Cloudflare Turnstile site key; empty disables the widget (local dev, demo mode)
+  TURNSTILE_SITE_KEY: (import.meta.env.VITE_TURNSTILE_SITE_KEY as string) || '',
 } as const;
 
 export type AppEnvironment = typeof ENV;

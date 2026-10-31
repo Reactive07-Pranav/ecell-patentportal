@@ -15,7 +15,7 @@ interface ImportMetaEnv {
   readonly VITE_STORAGE_BUCKET_DOCS?: string;
   readonly VITE_STORAGE_BUCKET_DRAWINGS?: string;
   readonly VITE_APP_ENV?: string;
-  readonly VITE_ENABLE_MOCK_FALLBACK?: string;
+  readonly VITE_TURNSTILE_SITE_KEY?: string;
 }
 
 interface ImportMeta {

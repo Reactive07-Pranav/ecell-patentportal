@@ -13,7 +13,10 @@ import {
   Hash,
   Sparkles,
 } from 'lucide-react';
-import { COORDINATOR, INSTITUTION } from '../config/constants';
+import { INSTITUTION } from '../config/constants';
+import { ENV } from '../config/env';
+import { Turnstile } from '../components/Turnstile';
+import { RESEND_COOLDOWN_SECONDS, isOtpCode, maskEmail, normalizeOtpInput } from '../features/auth/otp';
 import mujLogo from '../assets/muj-logo.png';
 import ecellLogo from '../assets/ecell-logo.png';
 
@@ -24,7 +27,7 @@ const fullEmail = (u: string) => {
 };
 
 export const LoginPage: React.FC = () => {
-  const { signInWithEmail, registerUniversityAccount, currentUser } = useAuth();
+  const { signInWithEmail, registerUniversityAccount, verifyEmailCode, resendEmailCode, currentUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -46,6 +49,46 @@ export const LoginPage: React.FC = () => {
   const [ok, setOk] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
+
+  // Email verification step: after sign-up, or a sign-in with an unverified address
+  const [verifyFor, setVerifyFor] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+  const [cooldown, setCooldown] = useState(0);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
+  // Demo mode only: the code that would have been emailed
+  const [demoInbox, setDemoInbox] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
+
+  const captchaMissing = () => {
+    if (ENV.TURNSTILE_SITE_KEY && !captchaToken) {
+      setErr('Please complete the security check.');
+      return true;
+    }
+    return false;
+  };
+
+  // Turnstile tokens work once, so every request takes the token and re-arms the widget
+  const spendCaptcha = () => {
+    const token = captchaToken ?? undefined;
+    setCaptchaToken(null);
+    setCaptchaKey((k) => k + 1);
+    return token;
+  };
+
+  const startVerification = (email: string, codeSent: boolean, message: string, demoCode?: string) => {
+    setVerifyFor(email);
+    setDemoInbox(demoCode ?? null);
+    setCode('');
+    setCooldown(codeSent ? RESEND_COOLDOWN_SECONDS : 0);
+    setErr(null);
+    setOk(message);
+  };
 
   React.useEffect(() => {
     if (currentUser) {
@@ -76,26 +119,21 @@ export const LoginPage: React.FC = () => {
       setErr('Please enter your username.');
       return;
     }
+    if (captchaMissing()) return;
     const email = fullEmail(username);
     setBusy(true);
-    const r = await signInWithEmail(email, password);
+    const r = await signInWithEmail(email, password, spendCaptcha());
     setBusy(false);
+    if (r.needsVerification) {
+      startVerification(email, false, `${maskEmail(email)} is not verified yet. Send yourself a code and enter it below.`);
+      return;
+    }
     if (r.error) {
       setErr(r.error);
       return;
     }
+    // The currentUser effect above redirects by the role stored in the database
     setOk('Identity verified. Redirecting…');
-    const c = email.toLowerCase();
-    const sa = c === 'superadmin@muj.manipal.edu' || c === 'it.admin@muj.manipal.edu';
-    const ad =
-      !sa &&
-      (c === COORDINATOR.EMAIL.toLowerCase() ||
-        c.includes('admin') ||
-        c.includes('coord') ||
-        c === 'patent.admin@muj.manipal.edu');
-    setTimeout(() => {
-      navigate(sa ? '/superadmin/dashboard' : ad ? '/admin/dashboard' : '/dashboard', { replace: true });
-    }, 300);
   };
 
   const onRegister = async (e: React.FormEvent) => {
@@ -110,6 +148,7 @@ export const LoginPage: React.FC = () => {
       setErr('Password must be at least 6 characters.');
       return;
     }
+    if (captchaMissing()) return;
     const email = fullEmail(regUser);
     setBusy(true);
     const r = await registerUniversityAccount({
@@ -119,20 +158,70 @@ export const LoginPage: React.FC = () => {
       department: regDept,
       registrationNumber: regNo,
       phone: regPhone,
+      captchaToken: spendCaptcha(),
     });
     setBusy(false);
     if (r.error) {
       setErr(r.error);
       return;
     }
+    if (r.needsVerification) {
+      // Same wording whether or not the address was already registered (no account enumeration)
+      startVerification(email, true, `If ${maskEmail(email)} can register, a 6-digit code is on its way.`, r.demoCode);
+      return;
+    }
     setOk('Registered successfully! Redirecting…');
     setTimeout(() => navigate('/dashboard', { replace: true }), 400);
+  };
+
+  const onVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!verifyFor) return;
+    setErr(null);
+    if (!isOtpCode(code)) {
+      setErr('Enter the 6-digit code from the email.');
+      return;
+    }
+    if (captchaMissing()) return;
+    setBusy(true);
+    const r = await verifyEmailCode(verifyFor, code, spendCaptcha());
+    setBusy(false);
+    if (r.error) {
+      setCode('');
+      setErr(r.error);
+      return;
+    }
+    setOk('Email verified. Signing you in…');
+  };
+
+  const onResendCode = async () => {
+    if (!verifyFor || cooldown > 0) return;
+    setErr(null);
+    if (captchaMissing()) return;
+    setBusy(true);
+    const r = await resendEmailCode(verifyFor, spendCaptcha());
+    setBusy(false);
+    if (r.error) {
+      setErr(r.error);
+      return;
+    }
+    setCooldown(RESEND_COOLDOWN_SECONDS);
+    setDemoInbox(r.demoCode ?? null);
+    setOk(`If ${maskEmail(verifyFor)} has an account awaiting verification, a new code is on its way. Earlier codes stop working.`);
+  };
+
+  const leaveVerification = () => {
+    setVerifyFor(null);
+    setDemoInbox(null);
+    setCode('');
+    setErr(null);
+    setOk(null);
   };
 
   return (
     <div style={S.page}>
       <div style={S.cardWrap}>
-        <div className="editorial-card" style={{ padding: '40px 38px', borderRadius: 28 }}>
+        <div className="editorial-card" style={{ padding: 'clamp(24px, 6vw, 40px) clamp(18px, 6vw, 38px)', borderRadius: 28 }}>
           {/* Header */}
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
@@ -157,7 +246,7 @@ export const LoginPage: React.FC = () => {
           </div>
 
           {/* Pill Tab Switcher */}
-          <div style={S.tabRow}>
+          <div style={{ ...S.tabRow, ...(verifyFor ? { display: 'none' } : null) }}>
             {(['signin', 'register'] as const).map((t) => (
               <button
                 key={t}
@@ -176,19 +265,72 @@ export const LoginPage: React.FC = () => {
 
           {/* Alerts */}
           {err && (
-            <div style={S.alertErr}>
-              <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+            <div role="alert" style={S.alertErr}>
+              <AlertCircle size={16} aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }} />
               <span>{err}</span>
             </div>
           )}
           {ok && (
-            <div style={S.alertOk}>
-              <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+            <div role="status" style={S.alertOk}>
+              <CheckCircle2 size={16} aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }} />
               <span>{ok}</span>
             </div>
           )}
 
-          {tab === 'signin' ? (
+          {verifyFor ? (
+            <form onSubmit={onVerifyCode} noValidate>
+              {demoInbox && (
+                <div role="note" style={S.demoInbox}>
+                  <strong>Demo inbox.</strong> Demo mode sends no email; in the live portal this code arrives at{' '}
+                  {maskEmail(verifyFor)}.
+                  <div style={S.demoCode}>{demoInbox}</div>
+                </div>
+              )}
+              <label htmlFor="email-code" style={S.label}>
+                6-digit code sent to {maskEmail(verifyFor)}
+              </label>
+              <input
+                id="email-code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={code}
+                onChange={(e) => setCode(normalizeOtpInput(e.target.value))}
+                aria-describedby="email-code-help"
+                autoFocus
+                style={{ ...S.input, ...S.codeInput }}
+              />
+              <p id="email-code-help" style={S.helpText}>
+                Codes expire 10 minutes after they are sent and work once. Check your spam folder if nothing arrives.
+              </p>
+
+              <Turnstile onToken={setCaptchaToken} resetKey={captchaKey} />
+
+              <div style={S.codeActions}>
+                <button type="submit" disabled={busy} className="btn btn-primary" style={{ padding: '11px 32px' }}>
+                  <span />
+                  {busy ? 'Verifying…' : 'Verify email'} <ArrowRight size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={onResendCode}
+                  disabled={busy || cooldown > 0}
+                  style={{ ...S.forgotBtn, ...(cooldown > 0 ? { color: '#354F77', cursor: 'not-allowed' } : null) }}
+                >
+                  {cooldown > 0 ? `Send a new code in ${cooldown}s` : 'Send a new code'}
+                </button>
+              </div>
+              {/* Announces only the start and end of the wait, not every second */}
+              <p aria-live="polite" style={S.srOnly}>
+                {cooldown > 0 ? 'You can request a new code in one minute.' : 'You can request a new code now.'}
+              </p>
+
+              <button type="button" onClick={leaveVerification} style={{ ...S.forgotBtn, marginTop: 18 }}>
+                Wrong email? Go back
+              </button>
+            </form>
+          ) : tab === 'signin' ? (
             <form onSubmit={onSignIn}>
               {/* 1-Click Demo Quick-Fill Pills */}
               <div style={{ marginBottom: 18, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -213,7 +355,7 @@ export const LoginPage: React.FC = () => {
               {/* Username Input */}
               <div style={{ marginBottom: 16 }}>
                 <label style={S.label}>Institutional Username</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={S.usernameRow}>
                   <input
                     type="text"
                     placeholder="e.g. aditya.sharma"
@@ -222,7 +364,7 @@ export const LoginPage: React.FC = () => {
                     required
                     autoFocus
                     autoComplete="username"
-                    style={{ ...S.input, flex: '1 1 0', minWidth: 0 }}
+                    style={{ ...S.input, ...S.usernameInput }}
                   />
                   <span style={S.domainTag}>@{INSTITUTION.DOMAIN}</span>
                 </div>
@@ -249,6 +391,8 @@ export const LoginPage: React.FC = () => {
                   {showPwd ? <EyeOff size={17} color="#6385B2" /> : <Eye size={17} color="#6385B2" />}
                 </button>
               </div>
+
+              <Turnstile onToken={setCaptchaToken} resetKey={captchaKey} />
 
               <div
                 style={{
@@ -286,14 +430,14 @@ export const LoginPage: React.FC = () => {
                 <label style={S.label}>
                   University Username <span style={S.req}>*</span>
                 </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={S.usernameRow}>
                   <input
                     type="text"
                     placeholder="username"
                     value={regUser}
                     onChange={(e) => setRegUser(e.target.value)}
                     required
-                    style={{ ...S.input, flex: '1 1 0', minWidth: 0 }}
+                    style={{ ...S.input, ...S.usernameInput }}
                   />
                   <span style={S.domainTag}>@{INSTITUTION.DOMAIN}</span>
                 </div>
@@ -395,6 +539,8 @@ export const LoginPage: React.FC = () => {
                   />
                 </div>
               </div>
+
+              <Turnstile onToken={setCaptchaToken} resetKey={captchaKey} />
 
               <button
                 type="submit"
@@ -657,11 +803,68 @@ const S: Record<string, React.CSSProperties> = {
     whiteSpace: 'nowrap' as const,
     flexShrink: 0,
   },
+  codeInput: {
+    fontFamily: 'var(--font-mono)',
+    fontSize: '1.25rem',
+    letterSpacing: '0.35em',
+    textAlign: 'center' as const,
+    maxWidth: 220,
+  },
+  helpText: {
+    fontSize: '0.75rem',
+    color: '#354F77',
+    margin: '6px 0 14px',
+  },
+  demoInbox: {
+    background: '#FFF7E6',
+    border: '1px dashed #C99A2E',
+    borderRadius: 12,
+    padding: '10px 14px',
+    fontSize: '0.8125rem',
+    color: '#5C4100',
+    marginBottom: 16,
+  },
+  demoCode: {
+    fontFamily: 'var(--font-mono)',
+    fontSize: '1.4rem',
+    fontWeight: 700,
+    letterSpacing: '0.3em',
+    color: '#152E5A',
+    marginTop: 4,
+  },
+  codeActions: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap' as const,
+    gap: 12,
+  },
+  srOnly: {
+    position: 'absolute' as const,
+    width: 1,
+    height: 1,
+    margin: -1,
+    overflow: 'hidden',
+    clip: 'rect(0 0 0 0)',
+    whiteSpace: 'nowrap' as const,
+    border: 0,
+  },
+  // On narrow phones the domain tag wraps below the input instead of crushing it
+  usernameRow: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap' as const,
+    gap: 8,
+  },
+  usernameInput: {
+    flex: '1 1 180px',
+    minWidth: 0,
+  },
   eyeBtn: {
     position: 'absolute' as const,
     right: 12,
-    top: '50%',
-    transform: 'translateY(-50%)',
+    // Anchored to the input; top: 50% centred it on label + input and pushed it up
+    bottom: 12,
     background: 'none',
     border: 'none',
     cursor: 'pointer',

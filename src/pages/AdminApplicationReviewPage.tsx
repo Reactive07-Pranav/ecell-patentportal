@@ -170,7 +170,7 @@ export const AdminApplicationReviewPage: React.FC = () => {
       }
       const verified = await verifyTotpMfa(mfaCode.trim());
       if (!verified) {
-        setMfaError('Invalid TOTP authenticator code. In demo mode, use 123456.');
+        setMfaError('That authenticator code did not match. Try the current code.');
         return;
       }
     }
@@ -214,7 +214,7 @@ export const AdminApplicationReviewPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="container" style={{ padding: '60px 0', textAlign: 'center' }}>
+      <div className="container" style={{ paddingBlock: '60px', textAlign: 'center' }}>
         <p>Loading application review dossier...</p>
       </div>
     );
@@ -222,7 +222,7 @@ export const AdminApplicationReviewPage: React.FC = () => {
 
   if (!application) {
     return (
-      <div className="container" style={{ padding: '40px 0' }}>
+      <div className="container" style={{ paddingBlock: '40px' }}>
         <div className="alert alert-danger">Application not found or inaccessible.</div>
         <Link to="/admin/dashboard" className="btn btn-outline">
           &larr; Return to Coordinator Registry
@@ -232,7 +232,7 @@ export const AdminApplicationReviewPage: React.FC = () => {
   }
 
   return (
-    <div className="container" style={{ padding: '24px 0 60px' }}>
+    <div className="container" style={{ paddingBlock: '24px 60px' }}>
       {/* Top Breadcrumb & Actions */}
       <div
         style={{
@@ -248,7 +248,7 @@ export const AdminApplicationReviewPage: React.FC = () => {
           &larr; Back to Screening Registry
         </Link>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           {((application.application_versions && application.application_versions.length > 0) ||
             application.current_version > 1) && (
             <button
@@ -488,13 +488,15 @@ export const AdminApplicationReviewPage: React.FC = () => {
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '8px',
                       padding: '8px 12px',
                       backgroundColor: 'var(--bg-secondary)',
                       borderRadius: 'var(--radius-sm)',
                       border: '1px solid var(--border-light)',
                     }}
                   >
-                    <div>
+                    <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                       <strong style={{ fontSize: '0.8125rem' }}>{doc.original_filename}</strong>
                       <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '8px' }}>
                         ({doc.document_category} &bull; {(doc.file_size_bytes / 1024).toFixed(1)} KB)
@@ -782,7 +784,7 @@ export const AdminApplicationReviewPage: React.FC = () => {
                     <span>AAL2 Coordinator Authentication Required</span>
                   </div>
                   <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 8px' }}>
-                    Enter 6-digit TOTP code to authorize this statutory transition (Demo: 123456).
+                    Enter the 6-digit code from your authenticator app to authorize this statutory transition.
                   </p>
                   <input
                     type="text"

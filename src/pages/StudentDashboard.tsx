@@ -77,7 +77,7 @@ export const StudentDashboard: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="container" style={{ padding: '80px 0', textAlign: 'center' }}>
+      <div className="container" style={{ paddingBlock: '80px', textAlign: 'center' }}>
         <div className="spinner" style={{ margin: '0 auto 16px' }} />
         <p style={{ color: '#6385B2' }}>Loading your patent disclosures and examination telemetry...</p>
       </div>
@@ -85,7 +85,7 @@ export const StudentDashboard: React.FC = () => {
   }
 
   return (
-    <div className="container" style={{ padding: '36px 0 60px' }}>
+    <div className="container" style={{ paddingBlock: '36px 60px' }}>
       {/* Header & New Application Action (Inspired by Image 1 Editorial Layout) */}
       <div
         style={{

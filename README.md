@@ -24,7 +24,7 @@ The portal replaces manual email attachments to the university patent coordinato
 
 ## 1. Project Overview & Key Capabilities
 
-- **Institutional Identity & Email Verification**: Supports verified university single sign-in (exclusively `@muj.manipal.edu`).
+- **Institutional Identity & Email Verification**: Accounts use an `@muj.manipal.edu` address and password, and work only after the 6-digit code emailed to that inbox is entered. Coordinators and super admins also enter an authenticator-app code (TOTP) at every sign-in.
 - **Structured Multi-Step Disclosure Form**: 8-section form capturing applicant details, co-inventors, problem statement, technical description, novelty claims, and practical utility.
 - **Draft Autosave & Incomplete Progress**: Students can save draft disclosures at any stage without mandatory validation blocking.
 - **Private Document Management**: Complete specifications (PDF/DOCX), technical drawings (PDF/PNG), and guide NOCs are stored in private storage with short-lived (15-minute) signed access URLs.
@@ -150,23 +150,33 @@ npm run dev
 
 The portal will open at `http://localhost:5173`.
 
-### Interactive Test Personas
-The application includes a built-in top notification bar with instant persona switching for testing:
-- **Student View**: Operates as applicant `Aditya Sharma` (`aditya.sharma@muj.manipal.edu`).
-- **Admin View**: Operates as coordinator `Patent Coordinator` (`patent.admin@muj.manipal.edu`).
+### Demo Mode and Test Personas
+Without `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` the portal runs in **demo mode**: data lives only in your browser, and nothing is a real security control. The login page has quick-fill buttons:
+- **Student**: `Aditya Sharma` (`aditya.sharma@muj.manipal.edu`), already verified.
+- **Coordinator**: `Patent Coordinator` (`patent.admin@muj.manipal.edu`), asked for an authenticator code at every sign-in.
+
+Demo mode also simulates both security steps: registering a new account shows the emailed code in an on-page **Demo inbox**, and the coordinator sets up a real authenticator app (Google / Microsoft Authenticator) with a setup key.
 
 ---
 
 ## 6. Database Migrations & Row Level Security (RLS)
 
-All database tables, enums, triggers, and Row Level Security policies are located in:
-`supabase/migrations/001_initial_schema.sql`
+Tables, triggers, functions and Row Level Security policies live in `supabase/migrations/`, applied in filename order:
+1. `001_initial_schema.sql`: base schema
+2. `20261025000000_verified_auth_and_atomic_workflow.sql`: privilege fixes and atomic workflow RPCs
+3. `20261029000000_super_admin_role.sql`: `super_admin` role
+4. `20261029000100_frontend_direct_workflow.sql`: validated status changes, snapshots and notifications by trigger, super admin console
+5. `20261029000200_email_otp_verification_and_mfa.sql`: email-code verification, coordinator TOTP (AAL2), daily draft limit, registration kill switch
+
+(`20261021000000_init_patent_portal.sql` is an identical copy of `001_initial_schema.sql`.)
 
 ### Applying Migrations to Live Supabase:
-1. Log in to the [Supabase Dashboard](https://app.supabase.com).
-2. Open your project and navigate to the **SQL Editor**.
-3. Open `supabase/migrations/001_initial_schema.sql`, paste its contents into the editor, and click **Run**.
-4. All tables, sequences (`patent_ref_seq`), triggers, and RLS policies will be created automatically.
+**Before migration 5, configure Supabase Auth email (custom SMTP, "Confirm email" on, the code template).** It makes every existing email/password account verify by code at next sign-in. The full order is in `docs/security/email-otp-and-2fa.md` section 6.
+
+```bash
+npx supabase db push --db-url "<session pooler connection string>"
+```
+Safe-mode rollback for migration 5: `supabase/rollbacks/20261029000200_email_otp_verification_and_mfa.down.sql`.
 
 ### RLS Policies Summary:
 - **Default Deny**: All tables require explicit policies.
@@ -178,18 +188,19 @@ All database tables, enums, triggers, and Row Level Security policies are locate
 
 ## 7. Authentication & Admin Role Provisioning
 
-### Student Authentication
-- Students sign in with their university email address (strictly `@muj.manipal.edu`).
-- On initial sign-in via Supabase Auth, the database trigger `on_auth_user_created` creates a corresponding record in `profiles` with default role `student`.
+### Student Registration and Sign-In
+- Students register with an `@muj.manipal.edu` address and password. Supabase Auth emails a 6-digit code (valid 10 minutes, single use); the account works only after the code is entered.
+- The `profiles` row (role `student`) is created only once the address is verified. Unverified users cannot file applications, and unverified sign-ups are purged after 24 hours.
+- Details, threat model, deployment order and runbook: `docs/security/email-otp-and-2fa.md`.
 
-### Patent Coordinator (Admin) Provisioning
-To assign administrator status to the patent coordinator:
-1. In the Supabase SQL Editor, execute the secure database function:
+### Coordinator (Admin) and Super Admin
+1. Grant the role from the Supabase SQL Editor:
 ```sql
 SELECT provision_admin_account('patent.admin@muj.manipal.edu');
+UPDATE profiles SET role = 'super_admin' WHERE university_email = '<it admin email>';
 ```
-2. This assigns `role = 'admin'` to the coordinator's profile.
-3. Because role assignments are protected by database triggers and security definer functions, students cannot grant themselves admin rights.
+2. At first sign-in they set up an authenticator app; every sign-in then asks for its 6-digit code. Until they enter it, the database treats them as a student (`is_admin()` requires an AAL2 session).
+3. Students cannot grant themselves roles: role changes are blocked by trigger unless made by a super admin with TOTP, or from the SQL Editor.
 
 ---
 
@@ -209,7 +220,8 @@ The test suite is built on Vitest and covers validation schemas, workflow state 
 
 ### Running Automated Tests:
 ```bash
-npm test
+npm test          # frontend (Vitest)
+npm run test:db   # database security and workflow checks against the real migrations (in-memory Postgres)
 ```
 
 ### Test Coverage Highlights:

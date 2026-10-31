@@ -4,6 +4,7 @@ import { useAuth } from '../features/auth/AuthContext';
 import { ShieldAlert } from 'lucide-react';
 import { COORDINATOR, INSTITUTION } from '../config/constants';
 import type { AppRole } from '../types/database.types';
+import { MfaGate } from './MfaGate';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -12,12 +13,12 @@ interface ProtectedRouteProps {
 }
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole, allowedRoles }) => {
-  const { currentUser, isLoading } = useAuth();
+  const { currentUser, isLoading, mfaStatus } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
     return (
-      <div className="container" style={{ padding: '64px 0', textAlign: 'center' }}>
+      <div className="container" style={{ paddingBlock: '64px', textAlign: 'center' }}>
         <p>Verifying university credentials and session...</p>
       </div>
     );
@@ -44,7 +45,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
 
     // Student attempting to access coordinator console
     return (
-      <div className="container" style={{ padding: '64px 0' }}>
+      <div className="container" style={{ paddingBlock: '64px' }}>
         <div
           className="card"
           style={{ maxWidth: '600px', margin: '0 auto', borderColor: 'var(--color-danger-border)' }}
@@ -74,6 +75,11 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
         </div>
       </div>
     );
+  }
+
+  // Coordinators and super admins pass TOTP before any admin page loads data (the database requires aal2 too)
+  if (mfaStatus === 'enroll' || mfaStatus === 'challenge') {
+    return <MfaGate />;
   }
 
   return <>{children}</>;
