@@ -9,6 +9,8 @@ export interface AuthResult {
   needsTotp?: boolean;
   // Demo mode only: the code that would have been emailed, shown in an on-page demo inbox
   demoCode?: string;
+  // Rate limited: seconds before the same action is worth trying again
+  retryAfter?: number;
 }
 
 // 'enroll' / 'challenge': every signed-in user must pass TOTP before portal pages load

@@ -27,6 +27,26 @@ const MFA_TIMESTAMP_KEY = STORAGE_KEYS.MFA_TIMESTAMP;
 const DEMO_ADMIN_EMAILS = [COORDINATOR.EMAIL.toLowerCase(), 'patent.admin@muj.manipal.edu'];
 const GENERIC_CODE_ERROR = 'That code is invalid or has expired. Request a new code and try again.';
 
+// Supabase Auth failures the person can act on (rate limits, captcha, email delivery). null: the caller
+// keeps its own wording, which for codes and passwords never reveals whether an account exists.
+function authErrorResult(error?: { code?: string; message?: string } | null): AuthResult | null {
+  if (!error) return null;
+  const message = error.message ?? '';
+  const seconds = Number(/after (\d+) seconds?/i.exec(message)?.[1]);
+  if (seconds) return { error: `For security, wait ${seconds} seconds before trying again.`, retryAfter: seconds };
+  if (error.code === 'over_email_send_rate_limit') {
+    return { error: 'The portal has reached its email limit for now. Please try again in a few minutes.', retryAfter: 60 };
+  }
+  if (error.code === 'over_request_rate_limit') {
+    return { error: 'Too many attempts from this network. Please wait a minute and try again.', retryAfter: 60 };
+  }
+  if (error.code === 'captcha_failed') return { error: 'Please complete the security check and try again.' };
+  if (/error sending .*email/i.test(message)) {
+    return { error: 'The code email could not be sent right now. Please try again later or contact the IPR cell.' };
+  }
+  return null;
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const live = isSupabaseConfigured();
   const [currentUser, setCurrentUser] = useState<Profile | null>(null);
@@ -167,8 +187,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               error: 'Your university email is not verified yet. Send yourself a code and enter it below.',
             };
           }
-          if (error.code === 'captcha_failed') return { error: 'Please complete the security check and try again.' };
-          return { error: 'Invalid email or password.' };
+          return authErrorResult(error) ?? { error: 'Invalid email or password.' };
         }
         const profile = await loadProfile(data.user.id);
         if (!profile) return { error: 'Your account is not active yet. Please contact the IPR cell.' };
@@ -222,11 +241,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           },
         });
         if (error) {
-          if (error.code === 'over_email_send_rate_limit' || error.code === 'over_request_rate_limit') {
-            return { error: 'Too many requests. Please wait a minute and try again.' };
-          }
-          if (error.code === 'captcha_failed') return { error: 'Please complete the security check and try again.' };
-          return { error: error.message || 'Failed to register university account.' };
+          const known = authErrorResult(error);
+          if (known) return known;
+          if (error.code === 'weak_password' || error.code === 'validation_failed') return { error: error.message };
+          return { error: 'Registration could not be completed. Please try again in a minute; if it keeps failing, contact the IPR cell.' };
         }
         // "Confirm email" off in the dashboard: Supabase signs the new account in at once
         if (data.session) {
@@ -264,7 +282,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       type: 'email',
       options: { captchaToken },
     });
-    if (error || !data.user) return { error: GENERIC_CODE_ERROR };
+    if (error || !data.user) return authErrorResult(error) ?? { error: GENERIC_CODE_ERROR };
     const profile = await loadProfile(data.user.id);
     return profile ? {} : { error: 'Your email is verified, but the account is not active yet. Please contact the IPR cell.' };
   };
@@ -276,12 +294,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: email.trim().toLowerCase(),
       options: { captchaToken },
     });
-    if (error?.code === 'over_email_send_rate_limit' || error?.code === 'over_request_rate_limit') {
-      return { error: 'Please wait before requesting another code.' };
-    }
-    if (error?.code === 'captcha_failed') return { error: 'Please complete the security check and try again.' };
     // Any other outcome looks the same, so the response does not reveal whether the address is registered
-    return {};
+    return authErrorResult(error) ?? {};
   };
 
   const enrollTotp: AuthContextType['enrollTotp'] = async () => {
@@ -333,21 +347,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return true;
   };
 
-  const rateLimitError = (code?: string) =>
-    code === 'over_email_send_rate_limit' || code === 'over_request_rate_limit'
-      ? 'Too many emails were requested. Please wait a few minutes and try again.'
-      : code === 'captcha_failed'
-      ? 'Please complete the security check and try again.'
-      : null;
-
   // Forgot password, step 1: Supabase emails a 6-digit recovery code (same reply whether or not the account exists)
   const requestPasswordReset: AuthContextType['requestPasswordReset'] = async (email, captchaToken) => {
     const normalizedEmail = email.trim().toLowerCase();
     if (!isAllowedUniversityEmail(normalizedEmail)) return { error: SECURITY_RULES.RESTRICTED_EMAIL_ERROR };
     if (!live) return isDemoVerified(normalizedEmail) ? { demoCode: issueDemoCode(normalizedEmail) } : {};
     const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, { captchaToken });
-    const limited = rateLimitError(error?.code);
-    return limited ? { error: limited } : {};
+    return authErrorResult(error) ?? {};
   };
 
   // Step 2: the code opens a recovery session. Accounts with an authenticator must also pass TOTP (step 3).
@@ -371,7 +377,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
     if (error) {
       setPasswordRecovery(false);
-      return { error: GENERIC_CODE_ERROR };
+      return authErrorResult(error) ?? { error: GENERIC_CODE_ERROR };
     }
     recoveryEmail.current = normalizedEmail;
     const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
@@ -431,9 +437,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: currentUser.university_email,
       options: { shouldCreateUser: false, captchaToken },
     });
-    const limited = rateLimitError(error?.code);
-    if (limited) return { error: limited };
-    return error ? { error: 'The code could not be sent. Please try again shortly.' } : {};
+    if (!error) return {};
+    return authErrorResult(error) ?? { error: 'The code could not be sent. Please try again shortly.' };
   };
 
   // Step 2: the emailed code plus the earlier password session prove both factors; the server removes the
@@ -455,7 +460,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       type: 'email',
       options: { captchaToken },
     });
-    if (error) return { error: GENERIC_CODE_ERROR };
+    if (error) return authErrorResult(error) ?? { error: GENERIC_CODE_ERROR };
     const { error: resetError } = await supabase.functions.invoke('reset-authenticator', {
       body: { password_access_token: passwordToken },
     });

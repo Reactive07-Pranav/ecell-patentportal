@@ -83,6 +83,18 @@ export const LoginPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [cooldown]);
 
+  // Rate limited by Supabase: keep the main button off until the wait is over, so repeat clicks do not extend it
+  const [wait, setWait] = useState(0);
+  React.useEffect(() => {
+    if (wait <= 0) return;
+    const timer = setTimeout(() => setWait((w) => w - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [wait]);
+  const showError = (r: { error?: string; retryAfter?: number }) => {
+    setErr(r.error ?? null);
+    if (r.retryAfter) setWait(r.retryAfter);
+  };
+
   const captchaMissing = () => {
     if (ENV.TURNSTILE_SITE_KEY && !captchaToken) {
       setErr('Please complete the security check.');
@@ -142,7 +154,7 @@ export const LoginPage: React.FC = () => {
       return;
     }
     if (r.error) {
-      setErr(r.error);
+      showError(r);
       return;
     }
     // The currentUser effect above redirects by the role stored in the database
@@ -175,7 +187,7 @@ export const LoginPage: React.FC = () => {
     });
     setBusy(false);
     if (r.error) {
-      setErr(r.error);
+      showError(r);
       return;
     }
     if (r.needsVerification) {
@@ -201,7 +213,7 @@ export const LoginPage: React.FC = () => {
     setBusy(false);
     if (r.error) {
       setCode('');
-      setErr(r.error);
+      showError(r);
       return;
     }
     setOk('Email verified. Signing you in…');
@@ -216,6 +228,7 @@ export const LoginPage: React.FC = () => {
     setBusy(false);
     if (r.error) {
       setErr(r.error);
+      if (r.retryAfter) setCooldown(r.retryAfter);
       return;
     }
     setCooldown(RESEND_COOLDOWN_SECONDS);
@@ -249,7 +262,7 @@ export const LoginPage: React.FC = () => {
     const r = await requestPasswordReset(email, spendCaptcha());
     setBusy(false);
     if (r.error) {
-      setErr(r.error);
+      showError(r);
       return;
     }
     setResetStep('code');
@@ -281,7 +294,7 @@ export const LoginPage: React.FC = () => {
       setBusy(false);
       if (r.error) {
         setResetCode('');
-        setErr(r.error);
+        showError(r);
         return;
       }
       setNeedsTotp(Boolean(r.needsTotp));
@@ -500,10 +513,12 @@ export const LoginPage: React.FC = () => {
               <Turnstile onToken={setCaptchaToken} resetKey={captchaKey} />
 
               <div style={S.codeActions}>
-                <button type="submit" disabled={busy} className="btn btn-primary" style={{ padding: '11px 32px' }}>
+                <button type="submit" disabled={busy || wait > 0} className="btn btn-primary" style={{ padding: '11px 32px' }}>
                   <span />
                   {busy
                     ? 'Please wait…'
+                    : wait > 0
+                    ? `Try again in ${wait}s`
                     : resetStep === 'email'
                     ? 'Send code'
                     : resetStep === 'code'
@@ -558,9 +573,9 @@ export const LoginPage: React.FC = () => {
               <Turnstile onToken={setCaptchaToken} resetKey={captchaKey} />
 
               <div style={S.codeActions}>
-                <button type="submit" disabled={busy} className="btn btn-primary" style={{ padding: '11px 32px' }}>
+                <button type="submit" disabled={busy || wait > 0} className="btn btn-primary" style={{ padding: '11px 32px' }}>
                   <span />
-                  {busy ? 'Verifying…' : 'Verify email'} <ArrowRight size={15} />
+                  {busy ? 'Verifying…' : wait > 0 ? `Try again in ${wait}s` : 'Verify email'} <ArrowRight size={15} />
                 </button>
                 <button
                   type="button"
@@ -635,12 +650,12 @@ export const LoginPage: React.FC = () => {
               >
                 <button
                   type="submit"
-                  disabled={busy}
+                  disabled={busy || wait > 0}
                   className="btn btn-primary"
-                  style={{ padding: '11px 32px', opacity: busy ? 0.6 : 1, cursor: busy ? 'not-allowed' : 'pointer' }}
+                  style={{ padding: '11px 32px', opacity: busy || wait > 0 ? 0.6 : 1, cursor: busy || wait > 0 ? 'not-allowed' : 'pointer' }}
                 >
                   <span />
-                  {busy ? 'Authenticating…' : 'Sign In'} <ArrowRight size={15} />
+                  {busy ? 'Authenticating…' : wait > 0 ? `Try again in ${wait}s` : 'Sign In'} <ArrowRight size={15} />
                 </button>
 
                 <button
@@ -774,12 +789,12 @@ export const LoginPage: React.FC = () => {
 
               <button
                 type="submit"
-                disabled={busy}
+                disabled={busy || wait > 0}
                 className="btn btn-primary"
-                style={{ width: '100%', padding: '12px 24px', opacity: busy ? 0.6 : 1 }}
+                style={{ width: '100%', padding: '12px 24px', opacity: busy || wait > 0 ? 0.6 : 1 }}
               >
                 <span />
-                {busy ? 'Registering…' : 'Complete Registration'} <ArrowRight size={15} />
+                {busy ? 'Registering…' : wait > 0 ? `Try again in ${wait}s` : 'Complete Registration'} <ArrowRight size={15} />
               </button>
             </form>
           )}

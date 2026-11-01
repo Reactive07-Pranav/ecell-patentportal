@@ -70,6 +70,22 @@ describe('live sign-up', () => {
     expect(ctx.isAal2).toBe(true);
   });
 
+  it('explains email delivery failures and rate limits instead of showing raw errors', async () => {
+    auth.signUp.mockResolvedValue({ data: {}, error: { code: 'unexpected_failure', message: 'Error sending confirmation email' } });
+    expect((await register()).error).toContain('could not be sent');
+    auth.signUp.mockResolvedValue({ data: {}, error: { code: 'unexpected_failure', message: 'Database error saving new user' } });
+    expect((await register()).error).toContain('could not be completed');
+    auth.signUp.mockResolvedValue({
+      data: {},
+      error: { code: 'over_email_send_rate_limit', message: 'For security purposes, you can only request this after 37 seconds.' },
+    });
+    expect(await register()).toMatchObject({ retryAfter: 37 });
+    auth.signInWithPassword.mockResolvedValue({ data: {}, error: { code: 'over_request_rate_limit', message: 'Request rate limit reached' } });
+    const r = await act(() => ctx.signInWithEmail(EMAIL, 'secret12'));
+    expect(r).toMatchObject({ retryAfter: 60 });
+    expect(r.error).not.toContain('Invalid email or password');
+  });
+
   it('sends an unconfirmed sign-in to the code step', async () => {
     auth.signInWithPassword.mockResolvedValue({ data: {}, error: { code: 'email_not_confirmed' } });
     const r = await act(() => ctx.signInWithEmail(EMAIL, 'secret12'));
@@ -82,7 +98,7 @@ describe('live password reset', () => {
     auth.resetPasswordForEmail.mockResolvedValue({ error: null });
     expect(await act(() => ctx.requestPasswordReset(EMAIL))).toEqual({});
     auth.resetPasswordForEmail.mockResolvedValue({ error: { code: 'over_email_send_rate_limit' } });
-    expect((await act(() => ctx.requestPasswordReset(EMAIL))).error).toContain('wait a few minutes');
+    expect((await act(() => ctx.requestPasswordReset(EMAIL))).error).toContain('try again in a few minutes');
   });
 
   it('needs the authenticator code when the account has one, then changes the password and signs out', async () => {

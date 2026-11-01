@@ -119,6 +119,19 @@ describe('registration email verification step', () => {
     expect(resendEmailCode).toHaveBeenCalledWith('legacy.user@muj.manipal.edu', undefined);
     expect(buttonByText(c, 'Send a new code').disabled).toBe(true);
   });
+
+  it('holds the sign-in button for the rate-limit wait, so repeat clicks send nothing', async () => {
+    const signInWithEmail = vi.fn(async () => ({ error: 'Too many attempts from this network.', retryAfter: 30 }));
+    const c = await render(<LoginPage />, authValue({ signInWithEmail }));
+    await typeInto(c.querySelector('input[autocomplete="username"]')!, 'aditya.sharma');
+    await typeInto(c.querySelector('input[autocomplete="current-password"]')!, 'secret12');
+    await submit(c.querySelector('form')!);
+
+    const button = c.querySelector<HTMLButtonElement>('form button[type="submit"]')!;
+    expect(button.textContent).toContain('Try again in 30s');
+    expect(button.disabled).toBe(true);
+    expect(c.querySelector('[role="alert"]')!.textContent).toContain('Too many attempts');
+  });
 });
 
 describe('coordinator TOTP gate', () => {
