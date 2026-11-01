@@ -49,14 +49,14 @@ afterEach(() => {
 });
 
 describe('super admin console', () => {
-  it('summarises accounts and flags accounts without an authenticator', () => {
+  it('summarises accounts without nagging about authenticators', () => {
     expect(container.querySelector('h1')!.textContent).toBe('Administration');
-    expect(container.textContent).toContain('Accounts without an authenticator');
+    expect(container.textContent).not.toContain('authenticator');
     expect(container.textContent).not.toMatch(/PostgreSQL Live|RLS Enforced/);
   });
 
   it('suspends a student with a reason, logs it, and shows it in Activity', async () => {
-    await click(byText('Review'));
+    await click(container.querySelector('#ac-tab-people')!);
     await click(container.querySelector('button[aria-label="Manage Riya K"]')!);
     await typeInto(document.querySelector('#ac-reason')!, 'Shared password');
     await click(byText('Suspend'));

@@ -61,6 +61,15 @@ describe('live sign-up', () => {
     expect(await register()).toEqual({});
   });
 
+  it('signs in with the password alone, even for an account that has an authenticator', async () => {
+    auth.mfa.getAuthenticatorAssuranceLevel.mockResolvedValue({ data: { currentLevel: 'aal1', nextLevel: 'aal2' }, error: null });
+    auth.signInWithPassword.mockResolvedValue({ data: { user: { id: 'u1' }, session: { user: { id: 'u1' } } }, error: null });
+    fetchCurrentProfile.mockResolvedValue({ id: 'u1', role: 'super_admin' });
+    expect((await act(() => ctx.signInWithEmail(EMAIL, 'secret12'))).error).toBeUndefined();
+    expect(ctx.mfaStatus).toBe('not_required');
+    expect(ctx.isAal2).toBe(true);
+  });
+
   it('sends an unconfirmed sign-in to the code step', async () => {
     auth.signInWithPassword.mockResolvedValue({ data: {}, error: { code: 'email_not_confirmed' } });
     const r = await act(() => ctx.signInWithEmail(EMAIL, 'secret12'));

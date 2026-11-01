@@ -18,7 +18,7 @@ import { INSTITUTION } from '../config/constants';
 import '../styles/admin-console.css';
 
 type Tab = 'overview' | 'people' | 'activity' | 'settings';
-type PeopleFilter = 'all' | 'pending' | 'no_authenticator' | 'suspended' | 'staff';
+type PeopleFilter = 'all' | 'pending' | 'suspended' | 'staff';
 
 const ROLE_LABEL: Record<AppRole, string> = { student: 'Student', admin: 'Coordinator', super_admin: 'Super admin' };
 
@@ -124,7 +124,6 @@ export const SuperAdminDashboard: React.FC = () => {
   // Derived figures
   const pending = people.filter(isPending);
   const active = people.filter((u) => u.role);
-  const withoutAuthenticator = active.filter((u) => !u.has_authenticator && !u.suspended);
   const suspended = people.filter((u) => u.suspended);
   const roleCount = (r: AppRole) => active.filter((u) => u.role === r).length;
   const stale = pipeline
@@ -139,7 +138,7 @@ export const SuperAdminDashboard: React.FC = () => {
     pipeline.forEach((a) => counts.set(a.applicant_department || 'Not specified', (counts.get(a.applicant_department || 'Not specified') ?? 0) + 1));
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
   }, [pipeline]);
-  const attentionCount = pending.length + withoutAuthenticator.length + suspended.length + stale.length + (registrationOpen ? 0 : 1);
+  const attentionCount = pending.length + suspended.length + stale.length + (registrationOpen ? 0 : 1);
 
   const openPeople = (f: PeopleFilter) => {
     setFilter(f);
@@ -151,7 +150,6 @@ export const SuperAdminDashboard: React.FC = () => {
     const q = query.trim().toLowerCase();
     if (q && !`${u.full_name ?? ''} ${u.email} ${u.registration_number ?? ''} ${u.department ?? ''}`.toLowerCase().includes(q)) return false;
     if (filter === 'pending') return isPending(u);
-    if (filter === 'no_authenticator') return Boolean(u.role) && !u.has_authenticator && !u.suspended;
     if (filter === 'suspended') return u.suspended;
     if (filter === 'staff') return u.role === 'admin' || u.role === 'super_admin';
     return true;
@@ -185,7 +183,7 @@ export const SuperAdminDashboard: React.FC = () => {
       {loadError && (
         <div role="alert" className="alert alert-danger" style={{ marginBottom: 20 }}>
           <span>
-            {loadError} Sign out and back in with your authenticator code, then refresh.
+            {loadError} Sign out and back in, then refresh.
           </span>
         </div>
       )}
@@ -224,7 +222,7 @@ export const SuperAdminDashboard: React.FC = () => {
                   </div>
                 ) : attentionCount === 0 ? (
                   <p className="ac-calm">
-                    <strong>Nothing needs attention.</strong> Every account has an authenticator, no sign-ups are waiting
+                    <strong>Nothing needs attention.</strong> No sign-ups are waiting
                     and the coordinator queue has nothing older than {STALE_DAYS} days.
                   </p>
                 ) : (
@@ -243,15 +241,6 @@ export const SuperAdminDashboard: React.FC = () => {
                     )}
                     {pending.length > 0 && (
                       <AttentionRow n={pending.length} title="Sign-ups waiting for their email code" note="Unverified sign-ups are removed after 24 hours." action="Review" onAction={() => openPeople('pending')} />
-                    )}
-                    {withoutAuthenticator.length > 0 && (
-                      <AttentionRow
-                        n={withoutAuthenticator.length}
-                        title="Accounts without an authenticator"
-                        note="They are asked to set one up at their next sign-in and see no patent records until then."
-                        action="Review"
-                        onAction={() => openPeople('no_authenticator')}
-                      />
                     )}
                     {suspended.length > 0 && (
                       <AttentionRow n={suspended.length} title="Suspended accounts" note="They cannot sign in until reactivated." action="Review" onAction={() => openPeople('suspended')} />
@@ -378,7 +367,6 @@ export const SuperAdminDashboard: React.FC = () => {
                     ['all', 'Everyone'],
                     ['staff', 'Staff'],
                     ['pending', 'Waiting for code'],
-                    ['no_authenticator', 'No authenticator'],
                     ['suspended', 'Suspended'],
                   ] as [PeopleFilter, string][]
                 ).map(([id, label]) => (
@@ -551,8 +539,6 @@ const SecurityTags: React.FC<{ user: DirectoryUser }> = ({ user }) => (
   <div className="ac-tags">
     {user.suspended && <span className="ac-tag ac-tag-bad">Suspended</span>}
     {user.email_confirmed_at ? <span className="ac-tag ac-tag-ok">Email verified</span> : <span className="ac-tag ac-tag-warn">Waiting for code</span>}
-    {user.role &&
-      (user.has_authenticator ? <span className="ac-tag ac-tag-ok">Authenticator</span> : <span className="ac-tag ac-tag-warn">No authenticator</span>)}
   </div>
 );
 
@@ -667,7 +653,7 @@ const AccountDrawer: React.FC<{ user: DirectoryUser; isSelf: boolean; onClose: (
     setConfirm(null);
     if (r.success) setReason('');
     const text: Record<AccountAction, string> = {
-      reset_authenticator: 'Authenticator removed. They set up a new one at their next sign-in.',
+      reset_authenticator: 'Authenticator removed.',
       sign_out: 'All sessions ended.',
       suspend: 'Account suspended and signed out.',
       reactivate: 'Account reactivated.',
@@ -773,21 +759,23 @@ const AccountDrawer: React.FC<{ user: DirectoryUser; isSelf: boolean; onClose: (
                 <Feedback k="password" />
               </section>
 
-              <section className="ac-section">
-                <h3>Authenticator</h3>
-                <p>{user.has_authenticator ? 'For a lost or replaced phone. Removes the app and signs them out.' : 'No authenticator set up yet; they will be asked at their next sign-in.'}</p>
-                <button
-                  type="button"
-                  className="ac-row-btn ac-row-btn-danger"
-                  onClick={() => setConfirm('reset_authenticator')}
-                  disabled={busy || isSelf || !user.has_authenticator}
-                >
-                  Reset authenticator
-                </button>
-                {isSelf && <p className="ac-feedback ac-muted">Another super admin must reset your own authenticator.</p>}
-                <Confirm action="reset_authenticator" label="Reset authenticator" text="Only do this after confirming the person's identity, for example in person or by a call to a known number." />
-                <Feedback k="reset_authenticator" />
-              </section>
+              {user.has_authenticator && (
+                <section className="ac-section">
+                  <h3>Old authenticator</h3>
+                  <p>Sign-in no longer uses an authenticator app. Remove this one so a password reset does not ask for its code.</p>
+                  <button
+                    type="button"
+                    className="ac-row-btn ac-row-btn-danger"
+                    onClick={() => setConfirm('reset_authenticator')}
+                    disabled={busy || isSelf}
+                  >
+                    Remove authenticator
+                  </button>
+                  {isSelf && <p className="ac-feedback ac-muted">Another super admin must remove your own authenticator.</p>}
+                  <Confirm action="reset_authenticator" label="Remove authenticator" text="This also signs them out on every device." />
+                  <Feedback k="reset_authenticator" />
+                </section>
+              )}
 
               <section className="ac-section">
                 <h3>Sessions</h3>

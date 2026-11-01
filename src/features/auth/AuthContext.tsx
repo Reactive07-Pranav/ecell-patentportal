@@ -56,27 +56,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [mfaVerifiedAt]);
 
-  // Every role needs an aal2 (TOTP) session; the database enforces the same rule
-  const refreshMfa = async (profile: Profile | null) => {
-    if (!profile) {
-      setMfaStatus('not_required');
-      return;
-    }
-    if (!live) {
-      // Read storage directly: state may still hold a timestamp cleared in this same tick
-      const verifiedAt = Number(localStorage.getItem(MFA_TIMESTAMP_KEY) || 0);
-      if (verifiedAt && Date.now() - verifiedAt < SECURITY_RULES.MFA_MAX_AGE_MS) setMfaStatus('verified');
-      else setMfaStatus(getDemoTotpSecret(profile.id) ? 'challenge' : 'enroll');
-      return;
-    }
-    const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (error || !data) {
-      setMfaStatus('challenge');
-    } else if (data.currentLevel === 'aal2') {
-      setMfaStatus('verified');
-    } else {
-      setMfaStatus(data.nextLevel === 'aal2' ? 'challenge' : 'enroll');
-    }
+  // The authenticator (TOTP) step at sign-in is switched off for every role: a password session is
+  // enough, and the database treats it the same way (20261101000100_remove_sign_in_authenticator.sql).
+  const refreshMfa = async (_profile: Profile | null) => {
+    setMfaStatus('not_required');
   };
 
   const loadProfile = async (userId: string) => {

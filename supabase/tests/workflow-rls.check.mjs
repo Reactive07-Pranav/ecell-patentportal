@@ -389,4 +389,13 @@ assert.equal((await as(S, `SELECT details->>'reason' AS r FROM admin_audit_log W
 assert.equal((await as(A, `SELECT count(*)::int AS n FROM admin_audit_log`))[0].n, 0, 'students cannot read the audit log');
 await fails(S, `INSERT INTO admin_audit_log (action) VALUES ('forged')`, /permission denied|row-level security/);
 ok('super admin console: directory, account actions, registration switch, pipeline without content, audit log');
+
+// 20. Authenticator step removed: a password-only (aal1) session has full access for every role
+await db.exec(readFileSync(`${root}/supabase/migrations/20261101000100_remove_sign_in_authenticator.sql`, 'utf8'));
+assert.ok((await as(S, `SELECT * FROM get_user_directory()`, [], 'aal1')).length > 0, 'aal1 super admin reads the directory');
+assert.equal((await as(C, `SELECT is_admin() AS a`, [], 'aal1'))[0].a, true, 'aal1 coordinator is admin');
+assert.ok((await as(C, `SELECT count(*)::int AS n FROM applications`, [], 'aal1'))[0].n > 0, 'aal1 coordinator sees disclosures');
+assert.ok((await as(A, `SELECT count(*)::int AS n FROM applications WHERE owner_id = $1`, [A], 'aal1'))[0].n > 0, 'aal1 student sees own records');
+assert.equal((await as(B, `SELECT count(*)::int AS n FROM applications WHERE owner_id = $1`, [A], 'aal1'))[0].n, 0, 'other students still cannot');
+ok('sign-in authenticator removed: password sessions work, ownership rules unchanged');
 console.log('all SQL checks passed');
