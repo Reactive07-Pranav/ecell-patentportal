@@ -24,6 +24,7 @@ export { AuthContext, type AuthContextType };
 const LOCAL_AUTH_USER_KEY = STORAGE_KEYS.AUTH_USER;
 const MFA_TIMESTAMP_KEY = STORAGE_KEYS.MFA_TIMESTAMP;
 // Demo mode only (no Supabase): these addresses open the coordinator persona. Live roles come from the database.
+const DEMO_SUPER_ADMIN_EMAILS = ['it.admin@muj.manipal.edu', 'superadmin@muj.manipal.edu'];
 const DEMO_ADMIN_EMAILS = [COORDINATOR.EMAIL.toLowerCase(), 'patent.admin@muj.manipal.edu'];
 const GENERIC_CODE_ERROR = 'That code is invalid or has expired. Request a new code and try again.';
 
@@ -91,8 +92,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Demo mode: local personas only. Every sign-in asks for a fresh authenticator code.
   const signInDemo = async (email: string, details?: DemoRegistration) => {
-    const isAdmin = DEMO_ADMIN_EMAILS.includes(email);
-    const userId = isAdmin ? COORDINATOR.ID : `student-${email.split('@')[0]}`;
+    const isSuperAdmin = DEMO_SUPER_ADMIN_EMAILS.includes(email);
+    const isAdmin = isSuperAdmin ? false : DEMO_ADMIN_EMAILS.includes(email);
+    const role: AppRole = isSuperAdmin ? 'super_admin' : isAdmin ? 'admin' : 'student';
+    const userId = isSuperAdmin ? 'super-admin-uuid' : isAdmin ? COORDINATOR.ID : `student-${email.split('@')[0]}`;
     const fallbackName = email
       .split('@')[0]
       .split('.')
@@ -101,9 +104,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const profile = await upsertProfile({
       id: userId,
       university_email: email,
-      full_name: isAdmin ? COORDINATOR.FULL_NAME : details?.fullName || fallbackName,
-      role: isAdmin ? 'admin' : 'student',
-      department: isAdmin ? INSTITUTION.DEPARTMENTS.IPR_CELL : details?.department || INSTITUTION.DEPARTMENTS.CSE,
+      full_name: isSuperAdmin ? 'IT & Governance Super Admin' : isAdmin ? COORDINATOR.FULL_NAME : details?.fullName || fallbackName,
+      role,
+      department: isSuperAdmin ? 'Directorate of IT & Systems' : isAdmin ? INSTITUTION.DEPARTMENTS.IPR_CELL : details?.department || INSTITUTION.DEPARTMENTS.CSE,
       registration_number: details?.registrationNumber || null,
       phone: details?.phone || null,
     });

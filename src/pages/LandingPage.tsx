@@ -237,7 +237,7 @@ export const LandingPage: React.FC = () => {
               placeholder={`${INSTITUTION.SHORT_NAME}-PAT-YYYY-XXXX`}
               value={refSearch}
               onChange={(e) => setRefSearch(e.target.value)}
-              style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', borderRadius: '9999px', padding: '10px 18px' }}
+              style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', borderRadius: '6px', padding: '10px 18px' }}
             />
             <button type="submit" className="btn btn-primary" disabled={isSearching}>
               <span />

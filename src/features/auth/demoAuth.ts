@@ -46,6 +46,8 @@ const SEEDED = [
   DEMO_PERSONAS.STUDENT_PRIYA.email,
   COORDINATOR.EMAIL,
   'patent.admin@muj.manipal.edu',
+  'it.admin@muj.manipal.edu',
+  'superadmin@muj.manipal.edu',
 ].map(norm);
 
 export function isDemoVerified(email: string): boolean {
