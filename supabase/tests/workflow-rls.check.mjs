@@ -392,6 +392,7 @@ ok('super admin console: directory, account actions, registration switch, pipeli
 
 // 20. Authenticator step removed: a password-only (aal1) session has full access for every role
 await db.exec(readFileSync(`${root}/supabase/migrations/20261101000100_remove_sign_in_authenticator.sql`, 'utf8'));
+await db.exec(readFileSync(`${root}/supabase/migrations/20261101000200_authenticator_trigger_search_path.sql`, 'utf8'));
 assert.ok((await as(S, `SELECT * FROM get_user_directory()`, [], 'aal1')).length > 0, 'aal1 super admin reads the directory');
 assert.equal((await as(C, `SELECT is_admin() AS a`, [], 'aal1'))[0].a, true, 'aal1 coordinator is admin');
 assert.ok((await as(C, `SELECT count(*)::int AS n FROM applications`, [], 'aal1'))[0].n > 0, 'aal1 coordinator sees disclosures');
