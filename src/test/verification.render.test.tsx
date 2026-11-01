@@ -20,6 +20,13 @@ function authValue(overrides: Partial<AuthContextType>): AuthContextType {
     mfaStatus: 'not_required',
     enrollTotp: vi.fn(async () => ({ error: 'unused' })),
     verifyTotpMfa: vi.fn(async () => false),
+    passwordRecovery: false,
+    requestPasswordReset: vi.fn(async () => ({})),
+    verifyPasswordResetCode: vi.fn(async () => ({})),
+    completePasswordReset: vi.fn(async () => ({})),
+    cancelPasswordReset: vi.fn(async () => {}),
+    sendAuthenticatorResetCode: vi.fn(async () => ({})),
+    confirmAuthenticatorReset: vi.fn(async () => ({})),
     ...overrides,
   };
 }
@@ -140,5 +147,98 @@ describe('coordinator TOTP gate', () => {
     const c = await render(<MfaGate />, authValue({ mfaStatus: 'challenge' }));
     expect(c.querySelector('#totp-code')).not.toBeNull();
     expect(buttonByText(c, 'Set up authenticator app')).toBeUndefined();
+  });
+});
+
+const student = {
+  id: 'st1',
+  university_email: 'aditya.sharma@muj.manipal.edu',
+  full_name: 'Aditya Sharma',
+  role: 'student',
+} as AuthContextType['currentUser'];
+
+describe('login page', () => {
+  it('offers no credential quick-fill', async () => {
+    const c = await render(<LoginPage />, authValue({}));
+    expect(c.textContent).not.toContain('Quick-Fill');
+    expect(c.querySelector<HTMLInputElement>('input[autocomplete="username"]')!.value).toBe('');
+  });
+});
+
+describe('forgot password', () => {
+  it('emails a code, checks it, then sets a new password with the authenticator code', async () => {
+    const requestPasswordReset = vi.fn(async () => ({}));
+    const verifyPasswordResetCode = vi.fn(async () => ({ needsTotp: true }));
+    const completePasswordReset = vi.fn(async () => ({}));
+    const c = await render(<LoginPage />, authValue({ requestPasswordReset, verifyPasswordResetCode, completePasswordReset }));
+
+    await click(buttonByText(c, 'Forgot Password?'));
+    await typeInto(c.querySelector('#reset-username')!, 'aditya.sharma');
+    await submit(c.querySelector('form')!);
+    expect(requestPasswordReset).toHaveBeenCalledWith('aditya.sharma@muj.manipal.edu', undefined);
+    expect(c.querySelector('[role="status"]')!.textContent).toContain('a***@muj.manipal.edu');
+
+    await typeInto(c.querySelector('#reset-code')!, '123 456');
+    await submit(c.querySelector('form')!);
+    expect(verifyPasswordResetCode).toHaveBeenCalledWith('aditya.sharma@muj.manipal.edu', '123456', undefined);
+
+    await typeInto(c.querySelector('#new-password')!, 'newpass1');
+    await typeInto(c.querySelector('#new-password-2')!, 'newpass1');
+    await submit(c.querySelector('form')!);
+    expect(completePasswordReset).not.toHaveBeenCalled();
+    expect(c.querySelector('[role="alert"]')!.textContent).toContain('authenticator app');
+
+    await typeInto(c.querySelector('#reset-totp')!, '654321');
+    await submit(c.querySelector('form')!);
+    expect(completePasswordReset).toHaveBeenCalledWith('newpass1', '654321');
+    expect(c.querySelector('[role="status"]')!.textContent).toContain('Password changed');
+    expect(c.querySelector<HTMLInputElement>('input[autocomplete="username"]')!.value).toBe('aditya.sharma');
+  });
+
+  it('rejects a wrong code without moving on', async () => {
+    const c = await render(
+      <LoginPage />,
+      authValue({ verifyPasswordResetCode: vi.fn(async () => ({ error: 'That code is invalid or has expired.' })) })
+    );
+    await click(buttonByText(c, 'Forgot Password?'));
+    await typeInto(c.querySelector('#reset-username')!, 'aditya.sharma');
+    await submit(c.querySelector('form')!);
+    await typeInto(c.querySelector('#reset-code')!, '000000');
+    await submit(c.querySelector('form')!);
+    expect(c.querySelector('#new-password')).toBeNull();
+    expect(c.querySelector('[role="alert"]')!.textContent).toContain('invalid or has expired');
+  });
+});
+
+describe('student authenticator', () => {
+  it('asks students for an authenticator code too', async () => {
+    const c = await render(<MfaGate />, authValue({ currentUser: student, mfaStatus: 'challenge' }));
+    expect(c.querySelector('#totp-code')).not.toBeNull();
+    expect(c.textContent).toContain('Portal access');
+  });
+
+  it('resets a lost authenticator with an emailed code', async () => {
+    const sendAuthenticatorResetCode = vi.fn(async () => ({}));
+    const confirmAuthenticatorReset = vi.fn(async () => ({}));
+    const c = await render(
+      <MfaGate />,
+      authValue({ currentUser: student, mfaStatus: 'challenge', sendAuthenticatorResetCode, confirmAuthenticatorReset })
+    );
+    await click(buttonByText(c, 'Lost your authenticator app?'));
+    await click(buttonByText(c, 'Email me a code'));
+    expect(sendAuthenticatorResetCode).toHaveBeenCalled();
+
+    await typeInto(c.querySelector('#lost-code')!, '112233');
+    await submit(c.querySelector('form')!);
+    expect(confirmAuthenticatorReset).toHaveBeenCalledWith('112233', undefined);
+    expect(c.querySelector('[role="status"]')!.textContent).toContain('Set up the new one');
+  });
+
+  it('does not offer self-service reset to coordinators', async () => {
+    const c = await render(
+      <MfaGate />,
+      authValue({ currentUser: { ...student!, role: 'admin' }, mfaStatus: 'challenge' })
+    );
+    expect(buttonByText(c, 'Lost your authenticator app?')).toBeUndefined();
   });
 });

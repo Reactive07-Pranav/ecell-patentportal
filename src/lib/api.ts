@@ -590,26 +590,21 @@ export interface ProcessSupervisionItem {
 
 export async function fetchProcessSupervisionOverview(): Promise<ProcessSupervisionItem[]> {
   if (isSupabaseConfigured()) {
-    // Deliberately select ONLY process milestones, applicant department, and timestamps.
-    // Confidentiality Shield: Omit trade-secret descriptions, claims, and documents.
-    const { data, error } = await supabase
-      .from('applications')
-      .select('id, reference_number, owner_id, status, current_version, submitted_at, created_at, updated_at, profiles(full_name, university_email, department)')
-      .order('updated_at', { ascending: false });
-
+    // Milestones only: the RPC never returns disclosure text, claims or documents
+    const { data, error } = await supabase.rpc('get_pipeline_overview');
     if (!error && data) {
-      return data.map((item: any) => ({
+      return (data as any[]).map((item) => ({
         id: item.id,
         reference_number: item.reference_number,
-        owner_id: item.owner_id,
+        owner_id: '',
         status: item.status,
         current_version: item.current_version,
         submitted_at: item.submitted_at,
         created_at: item.created_at,
         updated_at: item.updated_at,
-        applicant_name: item.profiles?.full_name || 'Applicant',
-        applicant_email: item.profiles?.university_email || '',
-        applicant_department: item.profiles?.department || 'Not specified',
+        applicant_name: item.applicant_name || 'Applicant',
+        applicant_email: item.applicant_email || '',
+        applicant_department: item.applicant_department || 'Not specified',
       }));
     }
   }
@@ -652,6 +647,7 @@ export async function superAdminResetUserPassword(
     }
     return { success: true };
   }
+  appendDemoAudit('password_reset', email.trim().toLowerCase());
   return { success: true };
 }
 
@@ -674,6 +670,7 @@ export async function superAdminUpdateUserRole(
   const profiles = getLocalItem<Profile[]>('profiles', []);
   const idx = profiles.findIndex((p) => p.id === userId);
   if (idx !== -1) {
+    appendDemoAudit('role_changed', profiles[idx].university_email, { from: profiles[idx].role, to: newRole });
     profiles[idx].role = newRole;
     setLocalItem('profiles', profiles);
   }
@@ -690,6 +687,150 @@ export async function fetchSuperAdminTelemetry(): Promise<any> {
     }
   }
   return null;
+}
+
+// Account directory, account actions, registration switch and audit trail.
+// Live: super-admin-only database functions (20261031000200_super_admin_console.sql), each logged
+// server side. Demo: browser storage stand-ins with the same shapes.
+
+export interface DirectoryUser {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: AppRole | null; // null: signed up but never entered the emailed code
+  department: string | null;
+  registration_number: string | null;
+  created_at: string;
+  email_confirmed_at: string | null;
+  last_sign_in_at: string | null;
+  has_authenticator: boolean;
+  suspended: boolean;
+}
+
+export interface AdminAuditEntry {
+  id: number;
+  actor_email: string | null;
+  action: string;
+  target_email: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface AuthEvent {
+  created_at: string;
+  ip_address: string | null;
+  action: string;
+  actor: string | null;
+}
+
+export type AccountAction = 'reset_authenticator' | 'sign_out' | 'suspend' | 'reactivate';
+
+const DEMO_AUDIT_KEY = 'admin_audit_log';
+const DEMO_SUSPENDED_KEY = 'demo_suspended_users';
+
+function appendDemoAudit(action: string, targetEmail: string | null, details: Record<string, unknown> = {}) {
+  const log = getLocalItem<AdminAuditEntry[]>(DEMO_AUDIT_KEY, []);
+  log.unshift({
+    id: (log[0]?.id ?? 0) + 1,
+    actor_email: 'super admin (demo)',
+    action,
+    target_email: targetEmail,
+    details,
+    created_at: new Date().toISOString(),
+  });
+  setLocalItem(DEMO_AUDIT_KEY, log.slice(0, 500));
+}
+
+export async function fetchUserDirectory(): Promise<DirectoryUser[]> {
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.rpc('get_user_directory');
+    if (error) throw new Error(error.message);
+    return (data ?? []) as DirectoryUser[];
+  }
+  const suspended = getLocalItem<string[]>(DEMO_SUSPENDED_KEY, []);
+  return getLocalItem<Profile[]>('profiles', []).map((p) => ({
+    id: p.id,
+    email: p.university_email,
+    full_name: p.full_name,
+    role: p.role,
+    department: p.department,
+    registration_number: p.registration_number,
+    created_at: p.created_at,
+    email_confirmed_at: p.created_at,
+    last_sign_in_at: null,
+    has_authenticator: false,
+    suspended: suspended.includes(p.id),
+  }));
+}
+
+export async function runAccountAction(
+  action: AccountAction,
+  user: Pick<DirectoryUser, 'id' | 'email'>,
+  reason?: string
+): Promise<{ success: boolean; error?: string }> {
+  if (isSupabaseConfigured()) {
+    const { error } =
+      action === 'reset_authenticator'
+        ? await supabase.rpc('admin_reset_authenticator', { p_user: user.id })
+        : action === 'sign_out'
+        ? await supabase.rpc('admin_sign_out_user', { p_user: user.id })
+        : await supabase.rpc('admin_set_suspended', {
+            p_user: user.id,
+            p_suspended: action === 'suspend',
+            p_reason: reason?.trim() || null,
+          });
+    return error ? { success: false, error: error.message } : { success: true };
+  }
+  const suspended = new Set(getLocalItem<string[]>(DEMO_SUSPENDED_KEY, []));
+  if (action === 'suspend') suspended.add(user.id);
+  if (action === 'reactivate') suspended.delete(user.id);
+  setLocalItem(DEMO_SUSPENDED_KEY, [...suspended]);
+  const logged = {
+    reset_authenticator: 'authenticator_reset',
+    sign_out: 'signed_out_everywhere',
+    suspend: 'account_suspended',
+    reactivate: 'account_reactivated',
+  }[action];
+  appendDemoAudit(logged, user.email, reason?.trim() ? { reason: reason.trim() } : {});
+  return { success: true };
+}
+
+export async function fetchAdminAuditLog(limit = 200): Promise<AdminAuditEntry[]> {
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase
+      .from('admin_audit_log')
+      .select('id, actor_email, action, target_email, details, created_at')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as AdminAuditEntry[];
+  }
+  return getLocalItem<AdminAuditEntry[]>(DEMO_AUDIT_KEY, []).slice(0, limit);
+}
+
+export async function fetchAuthEvents(limit = 200): Promise<AuthEvent[]> {
+  if (!isSupabaseConfigured()) return [];
+  const { data, error } = await supabase.rpc('get_auth_audit_events', { p_limit: limit });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as AuthEvent[];
+}
+
+export async function fetchRegistrationEnabled(): Promise<boolean> {
+  if (isSupabaseConfigured()) {
+    const { data } = await supabase.from('app_settings').select('value').eq('key', 'registration_enabled').maybeSingle();
+    return data?.value !== false;
+  }
+  return getLocalItem<boolean>('registration_enabled', true);
+}
+
+export async function setRegistrationEnabled(enabled: boolean): Promise<{ success: boolean; error?: string }> {
+  if (isSupabaseConfigured()) {
+    const { error } = await supabase.rpc('set_registration_enabled', { p_enabled: enabled });
+    return error ? { success: false, error: error.message } : { success: true };
+  }
+  setLocalItem('registration_enabled', enabled);
+  appendDemoAudit(enabled ? 'registration_opened' : 'registration_closed', null);
+  return { success: true };
 }
 
 // =============================================================================

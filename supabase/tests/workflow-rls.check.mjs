@@ -21,6 +21,8 @@ await db.exec(`
   CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;
   CREATE TABLE auth.sessions (id uuid primary key default gen_random_uuid(), user_id uuid not null);
+  ALTER TABLE auth.users ADD COLUMN banned_until timestamptz, ADD COLUMN last_sign_in_at timestamptz;
+  CREATE TABLE auth.mfa_factors (id uuid primary key default gen_random_uuid(), user_id uuid not null, factor_type text default 'totp', status text default 'verified');
   CREATE TABLE auth.audit_log_entries (id uuid primary key default gen_random_uuid(), payload json, created_at timestamptz default now(), ip_address varchar(64) default '');
   -- PGlite has no pgcrypto; stand-ins with the same signatures
   CREATE FUNCTION extensions.gen_salt(text) RETURNS text LANGUAGE sql AS $$ SELECT 'salt' $$;
@@ -48,6 +50,9 @@ await db.exec('RESET ROLE');
 const L = legacy.user_id;
 await db.query(`INSERT INTO auth.sessions (user_id) VALUES ($1)`, [L]);
 await db.exec(readFileSync(`${root}/supabase/migrations/20261029000200_email_otp_verification_and_mfa.sql`, 'utf8'));
+await db.exec(readFileSync(`${root}/supabase/migrations/20261031000000_student_authenticator.sql`, 'utf8'));
+await db.exec(readFileSync(`${root}/supabase/migrations/20261031000100_fix_signup_trigger_search_path.sql`, 'utf8'));
+await db.exec(readFileSync(`${root}/supabase/migrations/20261031000200_super_admin_console.sql`, 'utf8'));
 
 const A = '11111111-1111-1111-1111-111111111111';
 const B = '22222222-2222-2222-2222-222222222222';
@@ -234,6 +239,12 @@ const hash = async () => (await as(null, `SELECT encrypted_password FROM auth.us
 const firstHash = await hash();
 assert.equal((await as(A, `SELECT register_university_user('new.student@muj.manipal.edu', 'byalice', 'x') AS r`))[0].r.success, false);
 assert.equal(await hash(), firstHash, 'a student cannot reset another password');
+// If "Confirm email" is ever turned off, GoTrue inserts the sign-up confirmed and the profile exists at once
+const Q = '55555555-0000-0000-0000-000000000001';
+await as(null, `INSERT INTO auth.users (id, email, raw_app_meta_data, email_confirmed_at) VALUES ('${Q}', 'quick.student@muj.manipal.edu', '{"provider":"email"}', now())`);
+assert.equal(await profileCount(Q), 1, 'auto-confirmed sign-up gets a profile immediately');
+await as(null, `DELETE FROM auth.users WHERE id = '${Q}'`);
+await as(null, `DELETE FROM profiles WHERE id = '${Q}'`);
 ok('sign-up needs the emailed code; the old self-registration path is closed');
 
 // 11. Super admin console (TOTP session)
@@ -248,7 +259,7 @@ await fails(C, `UPDATE profiles SET role = 'admin' WHERE id = '${B}'`, /only a s
 await as(S, `UPDATE profiles SET role = 'admin' WHERE id = '${N}'`);
 assert.equal((await as(null, `SELECT role FROM profiles WHERE id = '${N}'`))[0].role, 'admin');
 assert.equal((await as(S, `SELECT count(*)::int AS n FROM profiles`))[0].n, 6);
-assert.equal((await as(S, `SELECT count(*)::int AS n FROM applications`))[0].n, 3);
+assert.equal((await as(S, `SELECT count(*)::int AS n FROM get_pipeline_overview()`))[0].n, 3, 'pipeline overview, not row access');
 const [{ get_superadmin_telemetry: t }] = await as(S, `SELECT get_superadmin_telemetry()`);
 assert.equal(t.total_users, 6);
 assert.equal(t.total_admins, 2);
@@ -271,17 +282,15 @@ await fails(C, `SELECT transition_application_status($1, 'approved_next_stage')`
 assert.equal((await as(C, `SELECT count(*)::int AS n FROM applications`, [], 'aal1'))[0].n, 0, 'aal1 coordinator sees no disclosures');
 ok('coordinator and super admin access require an aal2 (TOTP) session');
 
-// 13. Legacy accounts confirmed without proof must re-verify; their sessions were ended
-assert.equal((await as(null, `SELECT email_confirmed_at FROM auth.users WHERE id = $1`, [L]))[0].email_confirmed_at, null);
-assert.equal((await as(null, `SELECT count(*)::int AS n FROM auth.sessions WHERE user_id = $1`, [L]))[0].n, 0);
+// 13. Existing accounts are left alone: still confirmed, still signed in
+assert.notEqual((await as(null, `SELECT email_confirmed_at FROM auth.users WHERE id = $1`, [L]))[0].email_confirmed_at, null);
+assert.equal((await as(null, `SELECT count(*)::int AS n FROM auth.sessions WHERE user_id = $1`, [L]))[0].n, 1);
 assert.equal(await profileCount(L), 1, 'legacy data is kept');
 const draftSql = `INSERT INTO applications (owner_id, title, technical_field, background_problem, description, novelty_features, practical_applications)
   VALUES ('${L}', 'Draft', '', '', '', '', '')`;
-await fails(L, draftSql, /row-level security/);
-await as(null, `UPDATE auth.users SET email_confirmed_at = now() WHERE id = $1`, [L]);
 for (let i = 0; i < 10; i++) await as(L, draftSql);
 await fails(L, draftSql, /Daily limit reached/);
-ok('unproven legacy accounts re-verify before filing; 10 new disclosures per day');
+ok('existing accounts keep working; 10 new disclosures per day');
 
 // 14. Kill switch and purge
 const signup = (id, email, ageHours = 0) => as(null, `INSERT INTO auth.users (id, email, raw_app_meta_data, email_confirmed_at, created_at)
@@ -304,4 +313,90 @@ assert.equal((await as(C, `SELECT is_admin() AS a`, [], 'aal1'))[0].a, true);
 await assert.rejects(() => signup('88888888-8888-8888-8888-888888888888', 'late@muj.manipal.edu'), /temporarily unavailable/);
 await as(L, draftSql);
 ok('rollback keeps registration closed and lifts TOTP and draft limits');
+
+// 16. Repair script for sign-ups stuck unconfirmed while "Confirm email" was on
+const U = '55555555-0000-0000-0000-000000000002';
+await as(null, `UPDATE app_settings SET value = 'true' WHERE key = 'registration_enabled'`);
+await as(null, `INSERT INTO auth.users (id, email, raw_user_meta_data, raw_app_meta_data, email_confirmed_at)
+  VALUES ('${U}', 'stuck.student@muj.manipal.edu', '{"full_name":"Stuck Student"}', '{"provider":"email"}', NULL)`);
+assert.equal(await profileCount(U), 0);
+await db.exec(readFileSync(`${root}/supabase/fixes/unconfirmed_signups.sql`, 'utf8'));
+assert.equal(await profileCount(U), 1, 'repair confirms the account and creates its profile');
+assert.equal((await as(null, `SELECT full_name FROM profiles WHERE id = '${U}'`))[0].full_name, 'Stuck Student');
+ok('repair script activates stuck sign-ups');
+
+// 17. Students need an authenticator session (aal2) for every patent record
+const [{ id: aApp }] = await as(A, `SELECT id FROM applications WHERE owner_id = '${A}' LIMIT 1`);
+assert.equal((await as(A, `SELECT count(*)::int AS n FROM applications`, [], 'aal1'))[0].n, 0, 'aal1 student sees no disclosures');
+assert.equal((await as(A, `SELECT count(*)::int AS n FROM profiles WHERE id = '${A}'`, [], 'aal1'))[0].n, 1, 'profile stays readable for the TOTP step');
+await fails(A, `INSERT INTO applications (owner_id, title, technical_field, background_problem, description, novelty_features, practical_applications)
+  VALUES ('${A}', 'x', '', '', '', '', '')`, /row-level security|authenticator/, [], 'aal1');
+await fails(A, `SELECT save_application_draft($1::jsonb, '[]'::jsonb)`, /authenticator app/, [JSON.stringify({ title: 'New at aal1' })], 'aal1');
+assert.equal((await as(A, `UPDATE inventors SET full_name = 'x' WHERE application_id = $1 RETURNING id`, [aApp], 'aal1')).length, 0, 'aal1 update matches no rows');
+assert.ok((await as(A, `SELECT count(*)::int AS n FROM applications`))[0].n >= 1, 'aal2 student sees own disclosures');
+await as(null, `INSERT INTO inventors (application_id, full_name, email, department) VALUES ($1, 'Editor Check', 'e@muj.manipal.edu', 'CSE')`, [aApp]);
+ok('students need an authenticator (aal2) session for patent records; SQL editor still works');
+// 18. Supabase Auth inserts sign-ups with search_path = auth; the triggers must still resolve
+await db.exec(`SET search_path = auth; INSERT INTO auth.users (id, email, raw_app_meta_data) VALUES ('55555555-0000-0000-0000-000000000003', 'auth.path@muj.manipal.edu', '{"provider":"email"}'); SET search_path = "$user", public;`);
+assert.equal((await as(null, `SELECT count(*)::int AS n FROM auth.users WHERE email = 'auth.path@muj.manipal.edu'`))[0].n, 1);
+ok('sign-up triggers work under the auth search_path');
+
+// 19. Super admin console: directory, account actions, registration switch, pipeline, audit log
+// Section 15 ran the rollback; restore the current schema first (both files are re-runnable)
+for (const f of ['20261029000200_email_otp_verification_and_mfa', '20261031000200_super_admin_console']) {
+  await db.exec(readFileSync(`${root}/supabase/migrations/${f}.sql`, 'utf8'));
+}
+await as(null, `INSERT INTO auth.users (id, email, raw_app_meta_data, email_confirmed_at) VALUES ('55555555-0000-0000-0000-000000000004', 'pending.code@muj.manipal.edu', '{"provider":"email"}', NULL)`);
+const dir = await as(S, `SELECT * FROM get_user_directory()`);
+assert.ok(dir.some((r) => r.email === 'pending.code@muj.manipal.edu' && r.full_name === null && r.email_confirmed_at === null), 'unverified sign-ups are listed');
+await fails(A, `SELECT * FROM get_user_directory()`, /super admin access required/);
+await fails(S, `SELECT * FROM get_user_directory()`, /super admin access required/, [], 'aal1');
+
+await as(null, `INSERT INTO auth.mfa_factors (user_id) VALUES ($1)`, [B]);
+await as(null, `INSERT INTO auth.sessions (user_id) VALUES ($1), ($1)`, [B]);
+assert.equal((await as(S, `SELECT has_authenticator FROM get_user_directory() WHERE id = $1`, [B]))[0].has_authenticator, true);
+await as(S, `SELECT admin_reset_authenticator($1)`, [B]);
+assert.equal((await as(null, `SELECT count(*)::int AS n FROM auth.mfa_factors WHERE user_id = $1`, [B]))[0].n, 0);
+assert.equal((await as(null, `SELECT count(*)::int AS n FROM auth.sessions WHERE user_id = $1`, [B]))[0].n, 0);
+await fails(S, `SELECT admin_reset_authenticator($1)`, /another super admin/, [S]);
+await fails(C, `SELECT admin_reset_authenticator($1)`, /super admin access required/, [B]);
+
+await as(null, `INSERT INTO auth.sessions (user_id) VALUES ($1)`, [B]);
+await as(S, `SELECT admin_sign_out_user($1)`, [B]);
+assert.equal((await as(null, `SELECT count(*)::int AS n FROM auth.sessions WHERE user_id = $1`, [B]))[0].n, 0);
+
+await as(S, `SELECT admin_set_suspended($1, true, 'Shared password')`, [B]);
+assert.equal((await as(S, `SELECT suspended FROM get_user_directory() WHERE id = $1`, [B]))[0].suspended, true);
+await as(S, `SELECT admin_set_suspended($1, false)`, [B]);
+assert.equal((await as(null, `SELECT banned_until FROM auth.users WHERE id = $1`, [B]))[0].banned_until, null);
+await fails(S, `SELECT admin_set_suspended($1, true)`, /own account/, [S]);
+
+await as(S, `SELECT set_registration_enabled(false)`);
+assert.equal((await anon(`SELECT value FROM app_settings WHERE key = 'registration_enabled'`))[0].value, false);
+await as(S, `SELECT set_registration_enabled(true)`);
+await fails(A, `SELECT set_registration_enabled(false)`, /super admin access required/);
+
+const pipeline = await as(S, `SELECT * FROM get_pipeline_overview()`);
+assert.ok(pipeline.length >= 1);
+assert.ok(!('description' in pipeline[0]) && !('novelty_features' in pipeline[0]), 'no disclosure content');
+assert.equal((await as(S, `SELECT count(*)::int AS n FROM applications`))[0].n, 0, 'super admin has no direct row access to disclosures');
+
+const actions = (await as(S, `SELECT action, target_email, details FROM admin_audit_log ORDER BY id`)).map((r) => r.action);
+for (const a of ['role_changed', 'password_reset', 'authenticator_reset', 'signed_out_everywhere', 'account_suspended', 'account_reactivated', 'registration_closed', 'registration_opened']) {
+  assert.ok(actions.includes(a), `audit log records ${a}`);
+}
+assert.equal((await as(S, `SELECT details->>'reason' AS r FROM admin_audit_log WHERE action = 'account_suspended'`))[0].r, 'Shared password');
+assert.equal((await as(A, `SELECT count(*)::int AS n FROM admin_audit_log`))[0].n, 0, 'students cannot read the audit log');
+await fails(S, `INSERT INTO admin_audit_log (action) VALUES ('forged')`, /permission denied|row-level security/);
+ok('super admin console: directory, account actions, registration switch, pipeline without content, audit log');
+
+// 20. Authenticator step removed: a password-only (aal1) session has full access for every role
+await db.exec(readFileSync(`${root}/supabase/migrations/20261101000100_remove_sign_in_authenticator.sql`, 'utf8'));
+await db.exec(readFileSync(`${root}/supabase/migrations/20261101000200_authenticator_trigger_search_path.sql`, 'utf8'));
+assert.ok((await as(S, `SELECT * FROM get_user_directory()`, [], 'aal1')).length > 0, 'aal1 super admin reads the directory');
+assert.equal((await as(C, `SELECT is_admin() AS a`, [], 'aal1'))[0].a, true, 'aal1 coordinator is admin');
+assert.ok((await as(C, `SELECT count(*)::int AS n FROM applications`, [], 'aal1'))[0].n > 0, 'aal1 coordinator sees disclosures');
+assert.ok((await as(A, `SELECT count(*)::int AS n FROM applications WHERE owner_id = $1`, [A], 'aal1'))[0].n > 0, 'aal1 student sees own records');
+assert.equal((await as(B, `SELECT count(*)::int AS n FROM applications WHERE owner_id = $1`, [A], 'aal1'))[0].n, 0, 'other students still cannot');
+ok('sign-in authenticator removed: password sessions work, ownership rules unchanged');
 console.log('all SQL checks passed');

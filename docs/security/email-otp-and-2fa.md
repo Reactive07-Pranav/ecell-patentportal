@@ -2,6 +2,8 @@
 
 Status: implemented, tested offline (PGlite + Vitest). **Not yet applied to any Supabase project.**
 
+> **Update 2026-10-31: email code at sign-up kept; every role uses TOTP; self-service resets added.** Students now pass TOTP like coordinators (migration `20261031000000_student_authenticator.sql`). Forgot password uses Supabase's recovery code (`verifyOtp` type `recovery`), plus TOTP when enrolled. A student who lost the authenticator proves the password session and a fresh emailed sign-in code; Edge Function `reset-authenticator` then deletes the TOTP factors. Dashboard setup: README section 6.
+
 ## 1. Decision
 
 **Option A: Supabase Auth's built-in email OTP and TOTP MFA.** No custom OTP code, storage or crypto.

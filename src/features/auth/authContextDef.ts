@@ -5,11 +5,13 @@ export interface AuthResult {
   error?: string;
   // The account exists but its mailbox is not verified yet: show the code step
   needsVerification?: boolean;
+  // Password reset: this account has an authenticator, so its code is needed too
+  needsTotp?: boolean;
   // Demo mode only: the code that would have been emailed, shown in an on-page demo inbox
   demoCode?: string;
 }
 
-// 'enroll' / 'challenge': a coordinator or super admin must pass TOTP before admin pages load
+// 'enroll' / 'challenge': every signed-in user must pass TOTP before portal pages load
 export type MfaStatus = 'not_required' | 'enroll' | 'challenge' | 'verified';
 
 export interface AuthContextType {
@@ -34,6 +36,15 @@ export interface AuthContextType {
   // qrCode is empty in demo mode, where setup uses the key or otpauthUri instead
   enrollTotp: () => Promise<{ qrCode: string; secret: string; otpauthUri?: string } | { error: string }>;
   verifyTotpMfa: (code: string) => Promise<boolean>;
+  // Forgot password via a 6-digit recovery code from Supabase Auth
+  passwordRecovery: boolean;
+  requestPasswordReset: (email: string, captchaToken?: string) => Promise<AuthResult>;
+  verifyPasswordResetCode: (email: string, code: string, captchaToken?: string) => Promise<AuthResult>;
+  completePasswordReset: (newPassword: string, totpCode?: string) => Promise<AuthResult>;
+  cancelPasswordReset: () => Promise<void>;
+  // Lost authenticator (students): password session + emailed code, then a new authenticator
+  sendAuthenticatorResetCode: (captchaToken?: string) => Promise<AuthResult>;
+  confirmAuthenticatorReset: (code: string, captchaToken?: string) => Promise<AuthResult>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);

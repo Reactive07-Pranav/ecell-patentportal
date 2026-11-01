@@ -1,17 +1,18 @@
 -- =============================================================================
 -- Migration: 20261029000200_email_otp_verification_and_mfa.sql
--- Description: Every password account must prove it owns its @muj.manipal.edu
---              mailbox with Supabase Auth's 6-digit email OTP before it becomes a
---              portal user, and coordinator / super admin access requires TOTP
---              (AAL2). Closes the gap left by register_university_user, which
---              confirmed accounts with no mailbox proof.
+-- Description: Self-registration moves to Supabase Auth sign-up with a 6-digit
+--              emailed code (the old register_university_user path becomes
+--              password reset only),
+--              plus a registration kill switch, a daily draft limit, an
+--              unverified sign-up purge and an audit read view. Coordinator and
+--              super admin access requires TOTP (AAL2).
 --
 -- Auth settings this relies on (config.toml locally; same values in the dashboard):
---   [auth.email] enable_confirmations = true, otp_length = 6, otp_expiry = 600,
---   max_frequency = "60s"; confirmation template shows {{ .Token }};
---   [auth.mfa.totp] enroll_enabled = verify_enabled = true; custom SMTP; CAPTCHA.
--- Never turn "Confirm email" off: the database cannot tell an OTP confirmation
--- from an auto-confirmation.
+--   [auth.email] enable_confirmations = true ("Confirm email" on), otp_length = 6,
+--   otp_expiry = 600; confirmation / recovery / magic-link templates show {{ .Token }};
+--   custom SMTP (the built-in sender allows only a few emails per hour); CAPTCHA.
+--   [auth.mfa.totp] enroll_enabled = verify_enabled = true.
+-- Existing accounts are not reset to unverified (no user data is changed).
 --
 -- Rollback: supabase/rollbacks/20261029000200_email_otp_verification_and_mfa.down.sql
 -- (it closes self-registration; it never reopens unverified sign-up).
@@ -113,19 +114,7 @@ AS $$
     );
 $$;
 
--- 4. EXISTING ACCOUNTS CONFIRMED WITHOUT PROOF
--- Before this migration every email-provider account was confirmed with no code
--- (register_university_user, or GoTrue with confirmations off). They keep their
--- data but must enter an emailed code at next sign-in; their sessions end now.
-WITH unproven AS (
-    UPDATE auth.users
-    SET email_confirmed_at = NULL
-    WHERE raw_app_meta_data->>'provider' = 'email' AND email_confirmed_at IS NOT NULL
-    RETURNING id
-)
-DELETE FROM auth.sessions WHERE user_id IN (SELECT id FROM unproven);
-
--- 5. PASSWORD RESET ONLY (self-registration moved to Supabase Auth sign-up + OTP)
+-- 4. PASSWORD RESET ONLY (self-registration moved to Supabase Auth sign-up)
 CREATE OR REPLACE FUNCTION register_university_user(
     p_email TEXT,
     p_password TEXT,
@@ -165,7 +154,7 @@ $$;
 REVOKE EXECUTE ON FUNCTION register_university_user(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION register_university_user(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) TO authenticated;
 
--- 6. COORDINATOR AND SUPER ADMIN POWERS REQUIRE TOTP (AAL2)
+-- 5. COORDINATOR AND SUPER ADMIN POWERS REQUIRE TOTP (AAL2)
 -- Every admin policy, trigger and RPC goes through these two helpers, so an admin
 -- signed in with a password only is treated as a student until the TOTP step.
 CREATE OR REPLACE FUNCTION is_aal2()
@@ -202,7 +191,7 @@ AS $$
     );
 $$;
 
--- 7. FAKE-APPLICATION DEFENCE
+-- 6. FAKE-APPLICATION DEFENCE
 DROP POLICY IF EXISTS "Students can create draft applications" ON applications;
 CREATE POLICY "Students can create draft applications"
 ON applications FOR INSERT
@@ -241,7 +230,7 @@ BEFORE INSERT ON applications
 FOR EACH ROW
 EXECUTE FUNCTION limit_daily_drafts();
 
--- 8. UNVERIFIED SIGN-UP PURGE (24 h); accounts awaiting re-verification keep their data
+-- 7. UNVERIFIED SIGN-UP PURGE (24 h); accounts awaiting re-verification keep their data
 CREATE OR REPLACE FUNCTION purge_unverified_signups()
 RETURNS INTEGER
 LANGUAGE sql
@@ -269,7 +258,7 @@ BEGIN
     END IF;
 END $$;
 
--- 9. AUDIT READ VIEW (GoTrue writes auth.audit_log_entries: sign-ups, OTP sends,
+-- 8. AUDIT READ VIEW (GoTrue writes auth.audit_log_entries: sign-ups, OTP sends,
 -- confirmations, logins, MFA). Super admin only; no edit or delete path.
 CREATE OR REPLACE FUNCTION get_auth_audit_events(p_limit INTEGER DEFAULT 200)
 RETURNS TABLE (created_at TIMESTAMPTZ, ip_address TEXT, action TEXT, actor TEXT)

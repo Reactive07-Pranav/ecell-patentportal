@@ -27,7 +27,18 @@ const fullEmail = (u: string) => {
 };
 
 export const LoginPage: React.FC = () => {
-  const { signInWithEmail, registerUniversityAccount, verifyEmailCode, resendEmailCode, currentUser } = useAuth();
+  const {
+    signInWithEmail,
+    registerUniversityAccount,
+    verifyEmailCode,
+    resendEmailCode,
+    currentUser,
+    passwordRecovery,
+    requestPasswordReset,
+    verifyPasswordResetCode,
+    completePasswordReset,
+    cancelPasswordReset,
+  } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -48,7 +59,14 @@ export const LoginPage: React.FC = () => {
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [showForgot, setShowForgot] = useState(false);
+  // Forgot password: username -> emailed code -> new password (+ authenticator code if the account has one)
+  const [resetStep, setResetStep] = useState<null | 'email' | 'code' | 'password'>(null);
+  const [resetUser, setResetUser] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [newPwd2, setNewPwd2] = useState('');
+  const [resetTotp, setResetTotp] = useState('');
+  const [needsTotp, setNeedsTotp] = useState(false);
 
   // Email verification step: after sign-up, or a sign-in with an unverified address
   const [verifyFor, setVerifyFor] = useState<string | null>(null);
@@ -91,7 +109,8 @@ export const LoginPage: React.FC = () => {
   };
 
   React.useEffect(() => {
-    if (currentUser) {
+    // A forgot-password reset holds a recovery session until the new password is set
+    if (currentUser && !passwordRecovery) {
       const from = (location.state as any)?.from?.pathname;
       const dest =
         from && from !== '/' && from !== '/login' && from !== '/auth/login'
@@ -103,13 +122,7 @@ export const LoginPage: React.FC = () => {
           : '/dashboard';
       navigate(dest, { replace: true });
     }
-  }, [currentUser, navigate, location]);
-
-  const fillDemo = (u: string, p: string = 'password123') => {
-    setUsername(u);
-    setPassword(p);
-    setErr(null);
-  };
+  }, [currentUser, passwordRecovery, navigate, location]);
 
   const onSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -210,6 +223,107 @@ export const LoginPage: React.FC = () => {
     setOk(`If ${maskEmail(verifyFor)} has an account awaiting verification, a new code is on its way. Earlier codes stop working.`);
   };
 
+  const startReset = () => {
+    setResetStep('email');
+    setResetUser(username);
+    setErr(null);
+    setOk(null);
+  };
+
+  const leaveReset = async () => {
+    await cancelPasswordReset();
+    setResetStep(null);
+    setResetCode('');
+    setNewPwd('');
+    setNewPwd2('');
+    setResetTotp('');
+    setNeedsTotp(false);
+    setDemoInbox(null);
+    setErr(null);
+    setOk(null);
+  };
+
+  const sendResetCode = async () => {
+    const email = fullEmail(resetUser);
+    setBusy(true);
+    const r = await requestPasswordReset(email, spendCaptcha());
+    setBusy(false);
+    if (r.error) {
+      setErr(r.error);
+      return;
+    }
+    setResetStep('code');
+    setResetCode('');
+    setDemoInbox(r.demoCode ?? null);
+    setCooldown(RESEND_COOLDOWN_SECONDS);
+    // Same wording whether or not the account exists (no account enumeration)
+    setOk(`If ${maskEmail(email)} has an account, a 6-digit code is on its way. Earlier codes stop working.`);
+  };
+
+  const onResetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErr(null);
+    if (resetStep === 'email') {
+      if (!resetUser.trim()) {
+        setErr('Please enter your username.');
+        return;
+      }
+      if (captchaMissing()) return;
+      await sendResetCode();
+    } else if (resetStep === 'code') {
+      if (!isOtpCode(resetCode)) {
+        setErr('Enter the 6-digit code from the email.');
+        return;
+      }
+      if (captchaMissing()) return;
+      setBusy(true);
+      const r = await verifyPasswordResetCode(fullEmail(resetUser), resetCode, spendCaptcha());
+      setBusy(false);
+      if (r.error) {
+        setResetCode('');
+        setErr(r.error);
+        return;
+      }
+      setNeedsTotp(Boolean(r.needsTotp));
+      setResetStep('password');
+      setDemoInbox(null);
+      setOk('Code accepted. Choose a new password.');
+    } else {
+      if (newPwd !== newPwd2) {
+        setErr('Passwords do not match.');
+        return;
+      }
+      if (needsTotp && !isOtpCode(resetTotp)) {
+        setErr('Enter the 6-digit code from your authenticator app.');
+        return;
+      }
+      setBusy(true);
+      const r = await completePasswordReset(newPwd, needsTotp ? resetTotp : undefined);
+      setBusy(false);
+      if (r.error) {
+        if (r.needsTotp) setNeedsTotp(true);
+        setResetTotp('');
+        setErr(r.error);
+        return;
+      }
+      setResetStep(null);
+      setTab('signin');
+      setUsername(resetUser);
+      setPassword('');
+      setNewPwd('');
+      setNewPwd2('');
+      setResetTotp('');
+      setOk('Password changed. Sign in with your new password.');
+    }
+  };
+
+  const onResetResend = async () => {
+    if (cooldown > 0) return;
+    setErr(null);
+    if (captchaMissing()) return;
+    await sendResetCode();
+  };
+
   const leaveVerification = () => {
     setVerifyFor(null);
     setDemoInbox(null);
@@ -246,7 +360,7 @@ export const LoginPage: React.FC = () => {
           </div>
 
           {/* Pill Tab Switcher */}
-          <div style={{ ...S.tabRow, ...(verifyFor ? { display: 'none' } : null) }}>
+          <div style={{ ...S.tabRow, ...(verifyFor || resetStep ? { display: 'none' } : null) }}>
             {(['signin', 'register'] as const).map((t) => (
               <button
                 key={t}
@@ -277,7 +391,143 @@ export const LoginPage: React.FC = () => {
             </div>
           )}
 
-          {verifyFor ? (
+          {resetStep ? (
+            <form onSubmit={onResetSubmit} noValidate>
+              <h2 style={S.resetTitle}>Reset your password</h2>
+              {resetStep === 'email' && (
+                <>
+                  <p style={S.helpText}>Enter your university username. We will email you a 6-digit code.</p>
+                  <label htmlFor="reset-username" style={S.label}>
+                    Institutional Username
+                  </label>
+                  <div style={{ ...S.usernameRow, marginBottom: 20 }}>
+                    <input
+                      id="reset-username"
+                      type="text"
+                      value={resetUser}
+                      onChange={(e) => setResetUser(e.target.value)}
+                      autoComplete="username"
+                      autoFocus
+                      style={{ ...S.input, ...S.usernameInput }}
+                    />
+                    <span style={S.domainTag}>@{INSTITUTION.DOMAIN}</span>
+                  </div>
+                </>
+              )}
+
+              {resetStep === 'code' && (
+                <>
+                  {demoInbox && (
+                    <div role="note" style={S.demoInbox}>
+                      <strong>Demo inbox.</strong> Demo mode sends no email; in the live portal this code arrives at{' '}
+                      {maskEmail(fullEmail(resetUser))}.
+                      <div style={S.demoCode}>{demoInbox}</div>
+                    </div>
+                  )}
+                  <label htmlFor="reset-code" style={S.label}>
+                    6-digit code sent to {maskEmail(fullEmail(resetUser))}
+                  </label>
+                  <input
+                    id="reset-code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    value={resetCode}
+                    onChange={(e) => setResetCode(normalizeOtpInput(e.target.value))}
+                    aria-describedby="reset-code-help"
+                    autoFocus
+                    style={{ ...S.input, ...S.codeInput }}
+                  />
+                  <p id="reset-code-help" style={S.helpText}>
+                    Codes expire 10 minutes after they are sent and work once. Check your spam folder if nothing arrives.
+                  </p>
+                </>
+              )}
+
+              {resetStep === 'password' && (
+                <>
+                  <div style={{ marginBottom: 16 }}>
+                    <label htmlFor="new-password" style={S.label}>
+                      New password
+                    </label>
+                    <input
+                      id="new-password"
+                      type="password"
+                      value={newPwd}
+                      onChange={(e) => setNewPwd(e.target.value)}
+                      autoComplete="new-password"
+                      autoFocus
+                      style={S.input}
+                    />
+                  </div>
+                  <div style={{ marginBottom: 16 }}>
+                    <label htmlFor="new-password-2" style={S.label}>
+                      Confirm new password
+                    </label>
+                    <input
+                      id="new-password-2"
+                      type="password"
+                      value={newPwd2}
+                      onChange={(e) => setNewPwd2(e.target.value)}
+                      autoComplete="new-password"
+                      style={S.input}
+                    />
+                  </div>
+                  {needsTotp && (
+                    <div style={{ marginBottom: 16 }}>
+                      <label htmlFor="reset-totp" style={S.label}>
+                        Code from your authenticator app
+                      </label>
+                      <input
+                        id="reset-totp"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        pattern="[0-9]*"
+                        maxLength={6}
+                        value={resetTotp}
+                        onChange={(e) => setResetTotp(normalizeOtpInput(e.target.value))}
+                        style={{ ...S.input, ...S.codeInput }}
+                      />
+                      <p style={S.helpText}>
+                        Lost your authenticator too? Contact the IPR cell at {INSTITUTION.CONTACT_EMAIL}.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              <Turnstile onToken={setCaptchaToken} resetKey={captchaKey} />
+
+              <div style={S.codeActions}>
+                <button type="submit" disabled={busy} className="btn btn-primary" style={{ padding: '11px 32px' }}>
+                  <span />
+                  {busy
+                    ? 'Please wait…'
+                    : resetStep === 'email'
+                    ? 'Send code'
+                    : resetStep === 'code'
+                    ? 'Verify code'
+                    : 'Set new password'}{' '}
+                  <ArrowRight size={15} />
+                </button>
+                {resetStep === 'code' && (
+                  <button
+                    type="button"
+                    onClick={onResetResend}
+                    disabled={busy || cooldown > 0}
+                    style={{ ...S.forgotBtn, ...(cooldown > 0 ? { color: '#354F77', cursor: 'not-allowed' } : null) }}
+                  >
+                    {cooldown > 0 ? `Send a new code in ${cooldown}s` : 'Send a new code'}
+                  </button>
+                )}
+              </div>
+
+              <button type="button" onClick={leaveReset} style={{ ...S.forgotBtn, marginTop: 18 }}>
+                Back to sign in
+              </button>
+            </form>
+          ) : verifyFor ? (
             <form onSubmit={onVerifyCode} noValidate>
               {demoInbox && (
                 <div role="note" style={S.demoInbox}>
@@ -332,26 +582,6 @@ export const LoginPage: React.FC = () => {
             </form>
           ) : tab === 'signin' ? (
             <form onSubmit={onSignIn}>
-              {/* 1-Click Demo Quick-Fill Pills */}
-              <div style={{ marginBottom: 18, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6385B2' }}>Demo Quick-Fill:</span>
-                <button
-                  type="button"
-                  onClick={() => fillDemo('aditya.sharma')}
-                  style={S.quickFillPill}
-                >
-                  <Sparkles size={11} />
-                  Aditya Sharma (Student)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => fillDemo('patent.admin')}
-                  style={S.quickFillPillSecondary}
-                >
-                  Patent Coordinator (Admin)
-                </button>
-              </div>
-
               {/* Username Input */}
               <div style={{ marginBottom: 16 }}>
                 <label style={S.label}>Institutional Username</label>
@@ -416,7 +646,7 @@ export const LoginPage: React.FC = () => {
                 <button
                   type="button"
                   style={S.forgotBtn}
-                  onClick={() => setShowForgot(true)}
+                  onClick={startReset}
                   onMouseEnter={(e) => (e.currentTarget.style.color = '#204E96')}
                   onMouseLeave={(e) => (e.currentTarget.style.color = '#6385B2')}
                 >
@@ -561,71 +791,6 @@ export const LoginPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Forgot Password Modal */}
-      {showForgot && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: 'rgba(21, 46, 90, 0.45)',
-            backdropFilter: 'blur(4px)',
-            padding: 16,
-          }}
-          onClick={() => setShowForgot(false)}
-        >
-          <div
-            style={{
-              backgroundColor: '#FFFFFF',
-              borderRadius: 28,
-              border: '1px solid #EBE5D5',
-              padding: '36px 32px',
-              maxWidth: 440,
-              width: '100%',
-              boxShadow: '0 20px 50px rgba(21, 46, 90, 0.15)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ textAlign: 'center' }}>
-              <div
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: '50%',
-                  backgroundColor: '#E8EEF6',
-                  color: '#204E96',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  margin: '0 auto 16px',
-                }}
-              >
-                <AlertCircle size={22} />
-              </div>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#152E5A', margin: '0 0 10px' }}>
-                Institutional Password Assistance
-              </h3>
-              <p style={{ fontSize: '0.875rem', color: '#354F77', lineHeight: 1.6, margin: '0 0 20px' }}>
-                Password resets for @{INSTITUTION.DOMAIN} accounts are managed through the university central IT
-                directory or Patent Review Cell at{' '}
-                <strong style={{ color: '#204E96' }}>{INSTITUTION.CONTACT_EMAIL}</strong>.
-              </p>
-              <button
-                type="button"
-                onClick={() => setShowForgot(false)}
-                className="btn btn-primary"
-                style={{ padding: '10px 32px' }}
-              >
-                <span />
-                Understood
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -729,31 +894,11 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: '0.8125rem',
     color: '#15803D',
   },
-  quickFillPill: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 5,
-    fontSize: '0.75rem',
-    fontWeight: 600,
-    padding: '5px 14px',
-    borderRadius: 9999,
-    backgroundColor: '#E8EEF6',
-    color: '#204E96',
-    border: '1px solid #CBDDF2',
-    cursor: 'pointer',
-  },
-  quickFillPillSecondary: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 5,
-    fontSize: '0.75rem',
-    fontWeight: 600,
-    padding: '5px 14px',
-    borderRadius: 9999,
-    backgroundColor: '#FAF7EE',
-    color: '#354F77',
-    border: '1px solid #EBE5D5',
-    cursor: 'pointer',
+  resetTitle: {
+    fontSize: '1.05rem',
+    fontWeight: 700,
+    color: '#152E5A',
+    margin: '0 0 12px',
   },
   label: {
     display: 'block',
