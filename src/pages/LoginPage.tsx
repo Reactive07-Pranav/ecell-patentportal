@@ -838,7 +838,7 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: '0.72rem',
     fontWeight: 700,
     padding: '3px 12px',
-    borderRadius: 9999,
+    borderRadius: 6,
     letterSpacing: '0.04em',
     textTransform: 'uppercase',
   },
@@ -863,7 +863,7 @@ const S: Record<string, React.CSSProperties> = {
     marginBottom: 20,
     backgroundColor: '#F4EFE0',
     padding: 4,
-    borderRadius: 9999,
+    borderRadius: 6,
     border: '1px solid #EBE5D5',
   },
   tabBtn: {
@@ -873,7 +873,7 @@ const S: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     fontSize: '0.8125rem',
     cursor: 'pointer',
-    borderRadius: 9999,
+    borderRadius: 6,
     transition: 'all .2s ease',
   },
   tabActive: {

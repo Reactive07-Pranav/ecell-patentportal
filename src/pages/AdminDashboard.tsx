@@ -129,7 +129,7 @@ export const AdminDashboard: React.FC = () => {
               backgroundColor: '#E8EEF6',
               color: '#204E96',
               padding: '3px 12px',
-              borderRadius: '9999px',
+              borderRadius: '6px',
               fontSize: '0.72rem',
               fontWeight: 700,
               textTransform: 'uppercase',
@@ -336,7 +336,7 @@ export const AdminDashboard: React.FC = () => {
               <input
                 type="text"
                 className="form-control"
-                style={{ paddingLeft: '38px', fontSize: '0.85rem', height: '42px', borderRadius: '9999px', border: '1.5px solid #EBE5D5' }}
+                style={{ paddingLeft: '38px', fontSize: '0.85rem', height: '42px', borderRadius: '6px', border: '1.5px solid #EBE5D5' }}
                 placeholder="Search reference, applicant name, title, or keywords..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -347,7 +347,7 @@ export const AdminDashboard: React.FC = () => {
             <div style={{ minWidth: '200px' }}>
               <select
                 className="form-control"
-                style={{ fontSize: '0.85rem', height: '42px', borderRadius: '9999px', border: '1.5px solid #EBE5D5' }}
+                style={{ fontSize: '0.85rem', height: '42px', borderRadius: '6px', border: '1.5px solid #EBE5D5' }}
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
@@ -366,7 +366,7 @@ export const AdminDashboard: React.FC = () => {
               <div style={{ minWidth: '170px' }}>
                 <select
                   className="form-control"
-                  style={{ fontSize: '0.85rem', height: '42px', borderRadius: '9999px', border: '1.5px solid #EBE5D5' }}
+                  style={{ fontSize: '0.85rem', height: '42px', borderRadius: '6px', border: '1.5px solid #EBE5D5' }}
                   value={deptFilter}
                   onChange={(e) => setDeptFilter(e.target.value)}
                 >
@@ -384,7 +384,7 @@ export const AdminDashboard: React.FC = () => {
             <div style={{ minWidth: '170px' }}>
               <select
                 className="form-control"
-                style={{ fontSize: '0.85rem', height: '42px', borderRadius: '9999px', border: '1.5px solid #EBE5D5' }}
+                style={{ fontSize: '0.85rem', height: '42px', borderRadius: '6px', border: '1.5px solid #EBE5D5' }}
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
               >
@@ -486,7 +486,7 @@ export const AdminDashboard: React.FC = () => {
                                 color: '#152E5A',
                                 backgroundColor: '#E8EEF6',
                                 padding: '3px 8px',
-                                borderRadius: '9999px',
+                                borderRadius: '6px',
                                 border: '1px solid #CBDDF2',
                                 width: 'fit-content',
                               }}
@@ -528,7 +528,7 @@ export const AdminDashboard: React.FC = () => {
                         </td>
 
                         <td style={{ padding: '16px 20px', verticalAlign: 'middle' }}>
-                          <span className={`badge ${getStatusBadgeClass(app.status)}`} style={{ borderRadius: '9999px' }}>
+                          <span className={`badge ${getStatusBadgeClass(app.status)}`} style={{ borderRadius: '6px' }}>
                             {getStatusDisplayName(app.status)}
                           </span>
                         </td>
@@ -558,7 +558,7 @@ export const AdminDashboard: React.FC = () => {
                               alignItems: 'center',
                               gap: '6px',
                               fontWeight: 700,
-                              borderRadius: '9999px',
+                              borderRadius: '6px',
                               padding: '7px 16px',
                               backgroundColor: '#204E96',
                               color: '#ffffff',

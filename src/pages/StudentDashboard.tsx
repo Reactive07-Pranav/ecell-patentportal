@@ -106,7 +106,7 @@ export const StudentDashboard: React.FC = () => {
                 fontSize: '0.72rem',
                 fontWeight: 700,
                 padding: '3px 12px',
-                borderRadius: '9999px',
+                borderRadius: '6px',
                 textTransform: 'uppercase',
                 letterSpacing: '0.04em',
               }}
@@ -120,9 +120,6 @@ export const StudentDashboard: React.FC = () => {
           <h1 style={{ fontSize: '2.25rem', fontWeight: 800, margin: '0 0 8px', letterSpacing: '-0.025em', color: '#152E5A' }}>
             Welcome, {currentUser?.full_name}
           </h1>
-          <p style={{ margin: 0, color: '#354F77', fontSize: '0.95rem', maxWidth: '640px', lineHeight: 1.6 }}>
-            Manage your university invention disclosures, resolve examination remarks, and track intellectual property filings toward Indian Patent Office (IPO) preparation.
-          </p>
         </div>
 
         <Link
@@ -182,7 +179,7 @@ export const StudentDashboard: React.FC = () => {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
-            <div style={{ backgroundColor: '#FEE2E2', color: '#DC2626', padding: '10px', borderRadius: '9999px' }}>
+            <div style={{ backgroundColor: '#FEE2E2', color: '#DC2626', padding: '10px', borderRadius: '6px' }}>
               <ShieldAlert size={22} />
             </div>
             <div>
@@ -197,7 +194,7 @@ export const StudentDashboard: React.FC = () => {
           <Link
             to={`/applications/${actionRequiredApps[0].id}/corrections`}
             className="btn btn-danger"
-            style={{ fontWeight: 700, borderRadius: '9999px', padding: '10px 22px' }}
+            style={{ fontWeight: 700, borderRadius: '6px', padding: '10px 22px' }}
           >
             Resolve Remarks Now <ArrowRight size={15} />
           </Link>
@@ -232,7 +229,7 @@ export const StudentDashboard: React.FC = () => {
                 onClick={() => setFilterTab(tab.id as any)}
                 style={{
                   padding: '8px 18px',
-                  borderRadius: '9999px',
+                  borderRadius: '6px',
                   fontSize: '0.8125rem',
                   fontWeight: 600,
                   border: '1.5px solid',
@@ -262,7 +259,7 @@ export const StudentDashboard: React.FC = () => {
               paddingLeft: '36px', 
               fontSize: '0.85rem', 
               height: '40px', 
-              borderRadius: '9999px',
+              borderRadius: '6px',
               backgroundColor: '#FFFFFF',
               border: '1.5px solid #EBE5D5'
             }}
@@ -313,7 +310,7 @@ export const StudentDashboard: React.FC = () => {
                   : 'Start your intellectual property journey by filing an invention disclosure through the E-Cell MUJ patent portal.'}
               </p>
               {!searchQuery && filterTab === 'all' && (
-                <Link to="/applications/new" className="btn btn-primary" style={{ borderRadius: '9999px', padding: '10px 24px' }}>
+                <Link to="/applications/new" className="btn btn-primary" style={{ borderRadius: '6px', padding: '10px 24px' }}>
                   <PlusCircle size={16} />
                   Draft First Invention Disclosure
                 </Link>
@@ -365,7 +362,7 @@ export const StudentDashboard: React.FC = () => {
                               color: '#152E5A',
                               backgroundColor: '#E8EEF6',
                               padding: '4px 10px',
-                              borderRadius: '9999px',
+                              borderRadius: '6px',
                               border: '1px solid #CBDDF2',
                             }}
                           >
@@ -397,7 +394,7 @@ export const StudentDashboard: React.FC = () => {
                           )}
                         </td>
                         <td style={{ padding: '16px 20px', verticalAlign: 'middle' }}>
-                          <span className={`badge ${getStatusBadgeClass(app.status)}`} style={{ borderRadius: '9999px' }}>
+                          <span className={`badge ${getStatusBadgeClass(app.status)}`} style={{ borderRadius: '6px' }}>
                             {getStatusDisplayName(app.status)}
                           </span>
                         </td>
@@ -431,7 +428,7 @@ export const StudentDashboard: React.FC = () => {
                             <Link
                               to={`/applications/${app.id}/corrections`}
                               className="btn btn-sm btn-danger"
-                              style={{ fontWeight: 700, borderRadius: '9999px', padding: '6px 14px' }}
+                              style={{ fontWeight: 700, borderRadius: '6px', padding: '6px 14px' }}
                             >
                               Resolve
                               <ArrowRight size={13} />
@@ -440,7 +437,7 @@ export const StudentDashboard: React.FC = () => {
                             <Link
                               to={`/applications/${app.id}/edit`}
                               className="btn btn-sm btn-outline"
-                              style={{ fontWeight: 600, borderRadius: '9999px', padding: '6px 14px' }}
+                              style={{ fontWeight: 600, borderRadius: '6px', padding: '6px 14px' }}
                             >
                               <FileEdit size={13} />
                               Edit Draft
@@ -449,7 +446,7 @@ export const StudentDashboard: React.FC = () => {
                             <Link
                               to={`/applications/${app.id}`}
                               className="btn btn-sm btn-outline"
-                              style={{ fontWeight: 600, borderRadius: '9999px', padding: '6px 14px' }}
+                              style={{ fontWeight: 600, borderRadius: '6px', padding: '6px 14px' }}
                             >
                               <Eye size={13} />
                               View
